@@ -13,6 +13,8 @@ public class Grid : MonoBehaviour
     private Node[,] grid;
     private float nodeDiameter;
     private int gridSizeX, gridSizeY;
+    
+    public List<Node> path; // A public list to hold the calculated path for drawing.
 
     void Awake()
     {
@@ -130,8 +132,13 @@ public class Grid : MonoBehaviour
             {
                 // Set the color based on whether the node is walkable or an obstacle
                 Gizmos.color = (n.isWalkable) ? Color.white : Color.red;
-                
-                // Visibility Visualization
+            
+                // Add this block to draw the path in a distinct color
+                if (path != null && path.Contains(n))
+                {
+                    Gizmos.color = Color.green; // Path nodes will be green
+                }
+
                 if (n.isVisible)
                 {
                     Gizmos.color = Color.cyan;

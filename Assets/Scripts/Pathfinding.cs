@@ -1,0 +1,107 @@
+using UnityEngine;
+using System.Collections.Generic;
+using System.Diagnostics;
+
+public class Pathfinding : MonoBehaviour
+{
+    private Grid grid;
+
+    void Awake()
+    {
+        grid = GetComponent<Grid>();
+    }
+
+    // This is the main method that finds a path from startPos to targetPos.
+    public List<Node> FindPath(Vector3 startPos, Vector3 targetPos)
+    {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+
+        Node startNode = grid.NodeFromWorldPoint(startPos);
+        Node targetNode = grid.NodeFromWorldPoint(targetPos);
+
+        // A* Algorithm Core
+        List<Node> openSet = new List<Node>();
+        HashSet<Node> closedSet = new HashSet<Node>();
+        openSet.Add(startNode);
+
+        while (openSet.Count > 0)
+        {
+            Node currentNode = openSet[0];
+            // Find the node in the open set with the lowest F cost.
+            for (int i = 1; i < openSet.Count; i++)
+            {
+                if (openSet[i].fCost < currentNode.fCost || 
+                    (openSet[i].fCost == currentNode.fCost && openSet[i].hCost < currentNode.hCost))
+                {
+                    currentNode = openSet[i];
+                }
+            }
+
+            openSet.Remove(currentNode);
+            closedSet.Add(currentNode);
+
+            // If the target node has been found, done.
+            if (currentNode == targetNode)
+            {
+                sw.Stop();
+                print("Path found in: " + sw.ElapsedMilliseconds + " ms");
+                return RetracePath(startNode, targetNode);
+            }
+
+            // Evaluate the neighbors of the current node.
+            foreach (Node neighbour in grid.GetNeighbours(currentNode))
+            {
+                if (!neighbour.isWalkable || closedSet.Contains(neighbour))
+                {
+                    continue; // Skip unwalkable nodes or nodes already evaluated.
+                }
+
+                int newMovementCostToNeighbour = currentNode.gCost + GetDistance(currentNode, neighbour);
+                if (newMovementCostToNeighbour < neighbour.gCost || !openSet.Contains(neighbour))
+                {
+                    neighbour.gCost = newMovementCostToNeighbour;
+                    neighbour.hCost = GetDistance(neighbour, targetNode);
+                    neighbour.parent = currentNode;
+
+                    if (!openSet.Contains(neighbour))
+                    {
+                        openSet.Add(neighbour);
+                    }
+                }
+            }
+        }
+
+        // No path was found.
+        return null; 
+    }
+
+    // Reconstructs the path by working backwards from the end node.
+    private List<Node> RetracePath(Node startNode, Node endNode)
+    {
+        List<Node> path = new List<Node>();
+        Node currentNode = endNode;
+
+        while (currentNode != startNode)
+        {
+            path.Add(currentNode);
+            currentNode = currentNode.parent;
+        }
+        path.Reverse(); // The path is backwards, so reverse it.
+        return path;
+    }
+
+    // Calculates the distance between two nodes for G and H costs.
+    // This heuristic is for a grid allowing diagonal movement.
+    private int GetDistance(Node nodeA, Node nodeB)
+    {
+        int dstX = Mathf.Abs(nodeA.gridX - nodeB.gridX);
+        int dstY = Mathf.Abs(nodeA.gridY - nodeB.gridY);
+
+        // 14 is the diagonal cost, 10 is the straight cost.
+        // This avoids using floats and is faster.
+        if (dstX > dstY)
+            return 14 * dstY + 10 * (dstX - dstY);
+        return 14 * dstX + 10 * (dstY - dstX);
+    }
+}
