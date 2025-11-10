@@ -3,10 +3,13 @@ using System.Collections.Generic;
 
 public class Grid : MonoBehaviour
 {
+    [Tooltip("Enable this for live editing of obstacles in the Scene view during Play mode. Very slow, disable for actual gameplay.")]
+    public bool allowRuntimeGridUpdates = false;
+
     public LayerMask unwalkableMask;
     public Vector2 gridWorldSize;
     public float nodeRadius;
-    
+
     private Node[,] grid;
     private float nodeDiameter;
     private int gridSizeX, gridSizeY;
@@ -17,6 +20,15 @@ public class Grid : MonoBehaviour
         gridSizeX = Mathf.RoundToInt(gridWorldSize.x / nodeDiameter);
         gridSizeY = Mathf.RoundToInt(gridWorldSize.y / nodeDiameter);
         CreateGrid();
+    }
+    
+    // This is new! It allows for live updates for debugging.
+    void Update()
+    {
+        if (allowRuntimeGridUpdates)
+        {
+            UpdateGridObstacles();
+        }
     }
 
     void CreateGrid()
@@ -38,7 +50,27 @@ public class Grid : MonoBehaviour
         }
     }
 
-    // Helper function to get a node from a world position
+    // This is the new public method for updating the grid.
+    public void UpdateGridObstacles()
+    {
+        if (grid == null)
+        {
+            return; // Don't run if grid hasn't been created yet.
+        }
+
+        for (int x = 0; x < gridSizeX; x++)
+        {
+            for (int y = 0; y < gridSizeY; y++)
+            {
+                // We don't need to recalculate world position, just the walkable status.
+                bool walkable = !(Physics2D.OverlapCircle(grid[x, y].worldPosition, nodeRadius, unwalkableMask));
+                grid[x, y].isWalkable = walkable;
+            }
+        }
+    }
+    
+    // The rest of your Grid.cs script (NodeFromWorldPoint, GetNeighbours, OnDrawGizmos) remains the same.
+    // ...
     public Node NodeFromWorldPoint(Vector3 worldPosition)
     {
         float percentX = (worldPosition.x + gridWorldSize.x / 2) / gridWorldSize.x;
@@ -75,6 +107,16 @@ public class Grid : MonoBehaviour
             }
         }
         return neighbours;
+    }
+    
+    public Node NodeFromGridPoint(int x, int y)
+    {
+        // Check if the coordinates are within the grid bounds
+        if (x >= 0 && x < gridSizeX && y >= 0 && y < gridSizeY)
+        {
+            return grid[x, y];
+        }
+        return null; // Return null if out of bounds
     }
 
     // For debugging: Draw the grid in the Scene view
