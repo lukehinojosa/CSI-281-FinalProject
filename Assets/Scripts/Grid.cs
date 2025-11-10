@@ -132,16 +132,16 @@ public class Grid : MonoBehaviour
             {
                 // Set the color based on whether the node is walkable or an obstacle
                 Gizmos.color = (n.isWalkable) ? Color.white : Color.red;
+                
+                if (n.isVisible)
+                {
+                    Gizmos.color = Color.cyan;
+                }
             
                 // Add this block to draw the path in a distinct color
                 if (path != null && path.Contains(n))
                 {
                     Gizmos.color = Color.green; // Path nodes will be green
-                }
-
-                if (n.isVisible)
-                {
-                    Gizmos.color = Color.cyan;
                 }
 
                 Gizmos.DrawCube(n.worldPosition, Vector3.one * (nodeDiameter - .1f));
