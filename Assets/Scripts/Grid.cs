@@ -104,6 +104,16 @@ public class Grid : MonoBehaviour
                 // Check if the neighbor is within the grid boundaries
                 if (checkX >= 0 && checkX < gridSizeX && checkY >= 0 && checkY < gridSizeY)
                 {
+                    // If it's a diagonal neighbor (x and y are non-zero)
+                    if (Mathf.Abs(x) == 1 && Mathf.Abs(y) == 1)
+                    {
+                        // Check the two cardinal neighbors that form the corner.
+                        // If either is unwalkable, we cannot move diagonally.
+                        if (!grid[checkX, node.gridY].isWalkable || !grid[node.gridX, checkY].isWalkable)
+                        {
+                            continue; // Skip this diagonal neighbor
+                        }
+                    }
                     neighbours.Add(grid[checkX, checkY]);
                 }
             }

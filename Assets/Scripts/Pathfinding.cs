@@ -98,8 +98,7 @@ public class Pathfinding : MonoBehaviour
         int dstX = Mathf.Abs(nodeA.gridX - nodeB.gridX);
         int dstY = Mathf.Abs(nodeA.gridY - nodeB.gridY);
 
-        // 14 is the diagonal cost, 10 is the straight cost.
-        // This avoids using floats and is faster.
+        // 14 is the cost of a diagonal move, 10 is the cost of a cardinal move.
         if (dstX > dstY)
             return 14 * dstY + 10 * (dstX - dstY);
         return 14 * dstX + 10 * (dstY - dstX);
