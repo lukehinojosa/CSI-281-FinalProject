@@ -81,6 +81,11 @@ public class GOAPAgent : MonoBehaviour, IGoap
             // This only runs if energy is fine and the player isn't visible
             fsm.ChangeState(PlanState);
         }
+        // Lowest Priority: If there is nothing else to do, find something to do.
+        else
+        {
+            fsm.ChangeState(PlanState);
+        }
     }
 
     private void PlanState(FSM fsm, object data)
@@ -122,11 +127,37 @@ public class GOAPAgent : MonoBehaviour, IGoap
             return;
         }
         
-        // Check if the current goal is to chase the player.
-        if (currentGoal.Contains(new KeyValuePair<string, object>("isAtDestination", true)))
+        // Priority 1: Survival
+        bool isLowOnEnergy = currentEnergy < lowEnergyThreshold;
+        bool isCurrentlyRecharging = currentGoal.Contains(new KeyValuePair<string, object>("isLowOnEnergy", false));
+        
+        if (isLowOnEnergy && !isCurrentlyRecharging)
         {
-            // Only if chasing the player, check for replanning opportunities.
-            if (IsTargetVisible())
+            Debug.Log("<color=red>ENERGY CRITICAL! Interrupting current action to find a station.</color>");
+            action.OnPlanAborted();
+            currentActions.Clear();
+            fsm.ChangeState(PlanState); // Force a replan with survival as the goal
+            return;
+        }
+        
+        // Priority 2: Chase player
+        // This will only run if energy is NOT under threshold
+        if (IsTargetVisible())
+        {
+            bool isCurrentlyChasing = currentGoal.Contains(new KeyValuePair<string, object>("isAtDestination", true));
+
+            // NOT currently recharging AND NOT currently chasing.
+            if (!isCurrentlyRecharging && !isCurrentlyChasing)
+            {
+                Debug.Log("<color=magenta>Player spotted! Interrupting current action to chase.</color>");
+                action.OnPlanAborted();
+                currentActions.Clear();
+                lastKnownPosition = target.position;
+                fsm.ChangeState(PlanState);
+                return;
+            }
+            //Already chasing. Standard path update check.
+            else if (isCurrentlyChasing)
             {
                 Vector3 currentDestination = action.target.transform.position;
                 if (Vector3.Distance(target.position, currentDestination) > replanThreshold)
@@ -141,7 +172,7 @@ public class GOAPAgent : MonoBehaviour, IGoap
             }
         }
 
-        // Perform the action. This will now run without interruption if the goal is not player-related.
+        // Continue with the current plan
         if (!action.Perform((GameObject)data))
         {
             action.OnPlanAborted();
@@ -168,11 +199,16 @@ public class GOAPAgent : MonoBehaviour, IGoap
             // The goal is to no longer be in a low energy state.
             goal.Add(new KeyValuePair<string, object>("isLowOnEnergy", false));
         }
-        else
+        else if (lastKnownPosition != Vector3.zero)
         {
             // Priority 2: Chase Player
             // If energy is fine, the goal is to investigate the player's last known position.
             goal.Add(new KeyValuePair<string, object>("isAtDestination", true));
+        }
+        else
+        {
+            // PRIORITY 3: Roam
+            goal.Add(new KeyValuePair<string, object>("hasRoamed", true));
         }
 
         return goal;
