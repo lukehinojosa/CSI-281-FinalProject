@@ -24,4 +24,13 @@ public class FSM
     {
         stateStack.Pop();
     }
+    
+    public void ChangeState(FSMState state)
+    {
+        if (stateStack.Count > 0)
+        {
+            stateStack.Pop();
+        }
+        stateStack.Push(state);
+    }
 }

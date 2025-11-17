@@ -11,12 +11,22 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
     public HashSet<GOAPAction> availableActions;
     public Queue<GOAPAction> currentActions;
+    private HashSet<KeyValuePair<string, object>> currentGoal;
 
     public Vector3 lastKnownPosition;
 
     private GOAPPlanner planner;
     private FieldOfView fov;
     private Pathfinding pathfinder;
+    
+    [Header("Agent Vitals")]
+    public float currentEnergy = 100f;
+    public float maxEnergy = 100f;
+    public float lowEnergyThreshold = 25f;
+    public float energyDepletionRate = 2f; // energy depleted per second
+    
+    [HideInInspector]
+    public GameObject[] energyStations;
 
     void Awake()
     {
@@ -33,25 +43,43 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
         stateMachine = new FSM();
         stateMachine.PushState(IdleState); // Start in the Idle state
+        
+        energyStations = GameObject.FindGameObjectsWithTag("EnergyStation");
     }
 
     void Update()
     {
+        currentEnergy -= energyDepletionRate * Time.deltaTime;
+        if (currentEnergy <= 0)
+        {
+            Debug.Log("<color=red>Agent ran out of energy and died!</color>");
+            Destroy(gameObject);
+            return;
+        }
+        
         stateMachine.Update(gameObject);
     }
 
     private void IdleState(FSM fsm, object data)
     {
+        // First Priority: React to seeing the player
         if (IsTargetVisible())
         {
             // Target is visible, update its position and start planning.
             lastKnownPosition = target.position;
-            fsm.PushState(PlanState);
+            fsm.ChangeState(PlanState);
         }
+        // Second Priority: React to low energy
+        else if (currentEnergy < lowEnergyThreshold)
+        {
+            // Even if the player isn't seen, create survival plan
+            fsm.ChangeState(PlanState);
+        }
+        // Third Priority: Investigate stale location
         else if (lastKnownPosition != Vector3.zero)
         {
-            // Investigate last known position
-            fsm.PushState(PlanState);
+            // This only runs if energy is fine and the player isn't visible
+            fsm.ChangeState(PlanState);
         }
     }
 
@@ -66,74 +94,58 @@ public class GOAPAgent : MonoBehaviour, IGoap
         if (plan != null)
         {
             currentActions = plan;
+            currentGoal = goal;
             PlanFound(goal, plan);
-            fsm.PopState(); // Pop PlanState
-            fsm.PushState(MoveState); // Go to MoveState
+            fsm.ChangeState(MoveState);
         }
         else
         {
             PlanFailed(goal);
             lastKnownPosition = Vector3.zero; // Give up on this destination
-            fsm.PopState(); // Pop PlanState
-            fsm.PushState(IdleState); // Go back to Idle
+            fsm.ChangeState(IdleState);
         }
     }
 
     private void MoveState(FSM fsm, object data)
     {
-        // If the plan is empty, done. Go back to idle.
         if (currentActions.Count == 0)
         {
             ActionsFinished();
-            fsm.PopState();
-            fsm.PushState(IdleState);
+            fsm.ChangeState(IdleState);
             return;
         }
 
-        // Get the current action, but don't remove it from the queue yet.
         GOAPAction action = currentActions.Peek();
-
-        // Check if the current action is finished.
         if (action.isDone)
         {
-            // It's done, so remove it from the plan.
             currentActions.Dequeue();
-            // Return immediately to process the next action or finish the plan on the next frame.
-            // This prevents trying to use a completed action.
             return;
         }
-
-        if (IsTargetVisible())
+        
+        // Check if the current goal is to chase the player.
+        if (currentGoal.Contains(new KeyValuePair<string, object>("isAtDestination", true)))
         {
-            // The action's target is our current destination.
-            Vector3 currentDestination = action.target.transform.position;
-
-            if (Vector3.Distance(target.position, currentDestination) > replanThreshold)
+            // Only if chasing the player, check for replanning opportunities.
+            if (IsTargetVisible())
             {
-                Debug.Log("<color=yellow>Target has moved. Replanning...</color>");
-
-                // Abort the current action so it can clean up its resources (the DynamicTarget).
-                action.OnPlanAborted();
-                
-                // Discard the entire old plan.
-                currentActions.Clear();
-
-                // Set the new destination and go back to planning.
-                lastKnownPosition = target.position;
-                fsm.PopState(); // Exit MoveState
-                fsm.PushState(PlanState);
-                return;
+                Vector3 currentDestination = action.target.transform.position;
+                if (Vector3.Distance(target.position, currentDestination) > replanThreshold)
+                {
+                    Debug.Log("<color=yellow>Player has moved. Replanning chase...</color>");
+                    action.OnPlanAborted();
+                    currentActions.Clear();
+                    lastKnownPosition = target.position;
+                    fsm.ChangeState(PlanState);
+                    return;
+                }
             }
         }
 
-        // If we are here, it means we don't need to replan and the action is not done.
-        // So, perform the action.
+        // Perform the action. This will now run without interruption if the goal is not player-related.
         if (!action.Perform((GameObject)data))
         {
-            // Action failed to perform, abort the plan.
-            action.OnPlanAborted(); // Clean up the failed action
-            fsm.PopState();
-            fsm.PushState(IdleState);
+            action.OnPlanAborted();
+            fsm.ChangeState(IdleState);
             PlanAborted(action);
         }
     }
@@ -142,13 +154,27 @@ public class GOAPAgent : MonoBehaviour, IGoap
     {
         HashSet<KeyValuePair<string, object>> worldData = new HashSet<KeyValuePair<string, object>>();
         worldData.Add(new KeyValuePair<string, object>("hasDestination", lastKnownPosition != Vector3.zero));
+        worldData.Add(new KeyValuePair<string, object>("isLowOnEnergy", currentEnergy < lowEnergyThreshold));
         return worldData;
     }
 
     public HashSet<KeyValuePair<string, object>> CreateGoalState()
     {
         HashSet<KeyValuePair<string, object>> goal = new HashSet<KeyValuePair<string, object>>();
-        goal.Add(new KeyValuePair<string, object>("isAtDestination", true));
+
+        if (currentEnergy < lowEnergyThreshold)
+        {
+            // Priority 1: Survive
+            // The goal is to no longer be in a low energy state.
+            goal.Add(new KeyValuePair<string, object>("isLowOnEnergy", false));
+        }
+        else
+        {
+            // Priority 2: Chase Player
+            // If energy is fine, the goal is to investigate the player's last known position.
+            goal.Add(new KeyValuePair<string, object>("isAtDestination", true));
+        }
+
         return goal;
     }
 
@@ -188,5 +214,11 @@ public class GOAPAgent : MonoBehaviour, IGoap
             }
         }
         return false;
+    }
+    
+    public void ReplenishEnergy()
+    {
+        Debug.Log("<color=cyan>Energy Replenished!</color>");
+        currentEnergy = maxEnergy;
     }
 }
