@@ -159,7 +159,8 @@ public class GOAPAgent : MonoBehaviour, IGoap
             //Already chasing. Standard path update check.
             else if (isCurrentlyChasing)
             {
-                Vector3 currentDestination = action.target.transform.position;
+                Vector3 currentDestination = lastKnownPosition;
+                
                 if (Vector3.Distance(target.position, currentDestination) > replanThreshold)
                 {
                     Debug.Log("<color=yellow>Player has moved. Replanning chase...</color>");
@@ -226,9 +227,14 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
     public void ActionsFinished()
     {
-        Debug.Log("Actions Finished.");
-        // Reached the last known position, reset it so it doesn't plan again unless we see the player.
-        lastKnownPosition = Vector3.zero;
+        Debug.Log("Plan Finished.");
+
+        // Only reset the lastKnownPosition if the goal of the completed plan was to get to that destination.
+        if (currentGoal != null && currentGoal.Contains(new KeyValuePair<string, object>("isAtDestination", true)))
+        {
+            Debug.Log("Investigation complete. Clearing lastKnownPosition.");
+            lastKnownPosition = Vector3.zero;
+        }
     }
 
     public void PlanAborted(GOAPAction aborter)
