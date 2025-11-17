@@ -127,6 +127,12 @@ public class GOAPAgent : MonoBehaviour, IGoap
             return;
         }
         
+        // Situational awareness
+        if (IsTargetVisible())
+        {
+            lastKnownPosition = target.position;
+        }
+        
         // Priority 1: Survival
         bool isLowOnEnergy = currentEnergy < lowEnergyThreshold;
         bool isCurrentlyRecharging = currentGoal.Contains(new KeyValuePair<string, object>("isLowOnEnergy", false));
@@ -159,14 +165,12 @@ public class GOAPAgent : MonoBehaviour, IGoap
             //Already chasing. Standard path update check.
             else if (isCurrentlyChasing)
             {
-                Vector3 currentDestination = lastKnownPosition;
-                
-                if (Vector3.Distance(target.position, currentDestination) > replanThreshold)
+                // The action's Perform() has run at least once, so target is safe to access.
+                if (action.target != null && Vector3.Distance(target.position, action.target.transform.position) > replanThreshold)
                 {
                     Debug.Log("<color=yellow>Player has moved. Replanning chase...</color>");
                     action.OnPlanAborted();
                     currentActions.Clear();
-                    lastKnownPosition = target.position;
                     fsm.ChangeState(PlanState);
                     return;
                 }
