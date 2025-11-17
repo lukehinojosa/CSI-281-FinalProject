@@ -16,6 +16,11 @@ public class Grid : MonoBehaviour
     private Node[,] grid;
     private float nodeDiameter;
     private int gridSizeX, gridSizeY;
+    
+    public Node[,] GetGridNodes()
+    {
+        return grid;
+    }
 
     void Awake()
     {
