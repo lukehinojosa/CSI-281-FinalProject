@@ -3,18 +3,19 @@ using System.Collections.Generic;
 
 public class Grid : MonoBehaviour
 {
-    [Tooltip("Enable this for live editing of obstacles in the Scene view during Play mode. Very slow, disable for actual gameplay.")]
+    [Tooltip("Enable this for live editing of obstacles in the Scene view during Play mode. Can be slow.")]
     public bool allowRuntimeGridUpdates = false;
 
+    [Tooltip("The layer that represents obstacles. Use 3D colliders (e.g., Box Collider) for objects on this layer.")]
     public LayerMask unwalkableMask;
     public Vector2 gridWorldSize;
     public float nodeRadius;
 
+    public List<Node> path; // For path visualization
+
     private Node[,] grid;
     private float nodeDiameter;
     private int gridSizeX, gridSizeY;
-    
-    public List<Node> path; // A public list to hold the calculated path for drawing.
 
     void Awake()
     {
@@ -23,8 +24,7 @@ public class Grid : MonoBehaviour
         gridSizeY = Mathf.RoundToInt(gridWorldSize.y / nodeDiameter);
         CreateGrid();
     }
-    
-    // This is new! It allows for live updates for debugging.
+
     void Update()
     {
         if (allowRuntimeGridUpdates)
@@ -36,56 +36,60 @@ public class Grid : MonoBehaviour
     void CreateGrid()
     {
         grid = new Node[gridSizeX, gridSizeY];
-        Vector3 worldBottomLeft = transform.position - Vector3.right * gridWorldSize.x / 2 - Vector3.up * gridWorldSize.y / 2;
+        Vector3 worldBottomLeft = transform.position - Vector3.right * gridWorldSize.x / 2 - Vector3.forward * gridWorldSize.y / 2;
 
         for (int x = 0; x < gridSizeX; x++)
         {
             for (int y = 0; y < gridSizeY; y++)
             {
-                Vector3 worldPoint = worldBottomLeft + Vector3.right * (x * nodeDiameter + nodeRadius) + Vector3.up * (y * nodeDiameter + nodeRadius);
+                // Calculate the world point on the XZ plane.
+                Vector3 worldPoint = worldBottomLeft + Vector3.right * (x * nodeDiameter + nodeRadius) + Vector3.forward * (y * nodeDiameter + nodeRadius);
                 
-                // Check for obstacles using a collision check
-                bool walkable = !(Physics2D.OverlapCircle(worldPoint, nodeRadius, unwalkableMask));
+                // Use a 3D physics check (OverlapSphere) instead of a 2D check.
+                bool walkable = !(Physics.CheckSphere(worldPoint, nodeRadius, unwalkableMask));
                 
                 grid[x, y] = new Node(walkable, worldPoint, x, y);
             }
         }
     }
 
-    // This is the new public method for updating the grid.
     public void UpdateGridObstacles()
     {
-        if (grid == null)
-        {
-            return; // Don't run if grid hasn't been created yet.
-        }
+        if (grid == null) return;
 
         for (int x = 0; x < gridSizeX; x++)
         {
             for (int y = 0; y < gridSizeY; y++)
             {
-                // We don't need to recalculate world position, just the walkable status.
-                bool walkable = !(Physics2D.OverlapCircle(grid[x, y].worldPosition, nodeRadius, unwalkableMask));
+                // Re-check the walkable status using the 3D physics check.
+                bool walkable = !(Physics.CheckSphere(grid[x, y].worldPosition, nodeRadius, unwalkableMask));
                 grid[x, y].isWalkable = walkable;
             }
         }
     }
-    
-    // The rest of your Grid.cs script (NodeFromWorldPoint, GetNeighbours, OnDrawGizmos) remains the same.
-    // ...
+
     public Node NodeFromWorldPoint(Vector3 worldPosition)
     {
-        float percentX = (worldPosition.x + gridWorldSize.x / 2) / gridWorldSize.x;
-        float percentY = (worldPosition.y + gridWorldSize.y / 2) / gridWorldSize.y;
+        // Convert the world position's X and Z coordinates to grid percentages.
+        float percentX = (worldPosition.x - (transform.position.x - gridWorldSize.x / 2)) / gridWorldSize.x;
+        float percentZ = (worldPosition.z - (transform.position.z - gridWorldSize.y / 2)) / gridWorldSize.y;
         percentX = Mathf.Clamp01(percentX);
-        percentY = Mathf.Clamp01(percentY);
+        percentZ = Mathf.Clamp01(percentZ);
 
         int x = Mathf.RoundToInt((gridSizeX - 1) * percentX);
-        int y = Mathf.RoundToInt((gridSizeY - 1) * percentY);
+        int y = Mathf.RoundToInt((gridSizeY - 1) * percentZ);
         return grid[x, y];
     }
 
-    // Helper function to get the neighbors of a given node (for A*)
+    public Node NodeFromGridPoint(int x, int y)
+    {
+        if (x >= 0 && x < gridSizeX && y >= 0 && y < gridSizeY)
+        {
+            return grid[x, y];
+        }
+        return null;
+    }
+
     public List<Node> GetNeighbours(Node node)
     {
         List<Node> neighbours = new List<Node>();
@@ -94,24 +98,19 @@ public class Grid : MonoBehaviour
         {
             for (int y = -1; y <= 1; y++)
             {
-                // Skip the node itself
-                if (x == 0 && y == 0)
-                    continue;
+                if (x == 0 && y == 0) continue;
 
                 int checkX = node.gridX + x;
                 int checkY = node.gridY + y;
 
-                // Check if the neighbor is within the grid boundaries
                 if (checkX >= 0 && checkX < gridSizeX && checkY >= 0 && checkY < gridSizeY)
                 {
-                    // If it's a diagonal neighbor (x and y are non-zero)
+                    // Diagonal check now ensures clear paths in 3D space
                     if (Mathf.Abs(x) == 1 && Mathf.Abs(y) == 1)
                     {
-                        // Check the two cardinal neighbors that form the corner.
-                        // If either is unwalkable, we cannot move diagonally.
                         if (!grid[checkX, node.gridY].isWalkable || !grid[node.gridX, checkY].isWalkable)
                         {
-                            continue; // Skip this diagonal neighbor
+                            continue;
                         }
                     }
                     neighbours.Add(grid[checkX, checkY]);
@@ -120,21 +119,11 @@ public class Grid : MonoBehaviour
         }
         return neighbours;
     }
-    
-    public Node NodeFromGridPoint(int x, int y)
-    {
-        // Check if the coordinates are within the grid bounds
-        if (x >= 0 && x < gridSizeX && y >= 0 && y < gridSizeY)
-        {
-            return grid[x, y];
-        }
-        return null; // Return null if out of bounds
-    }
 
-    // For debugging: Draw the grid in the Scene view
     void OnDrawGizmos()
     {
-        Gizmos.DrawWireCube(transform.position, new Vector3(gridWorldSize.x, gridWorldSize.y, 1));
+        // Draw the grid wireframe on the XZ plane.
+        Gizmos.DrawWireCube(transform.position, new Vector3(gridWorldSize.x, 1, gridWorldSize.y));
 
         if (grid != null)
         {
@@ -142,19 +131,12 @@ public class Grid : MonoBehaviour
             {
                 // Set the color based on whether the node is walkable or an obstacle
                 Gizmos.color = (n.isWalkable) ? Color.white : Color.red;
-                
-                if (n.isVisible)
-                {
-                    Gizmos.color = Color.cyan;
-                }
-            
-                // Add this block to draw the path in a distinct color
-                if (path != null && path.Contains(n))
-                {
-                    Gizmos.color = Color.green; // Path nodes will be green
-                }
 
-                Gizmos.DrawCube(n.worldPosition, Vector3.one * (nodeDiameter - .1f));
+                if (n.isVisible) Gizmos.color = Color.cyan;
+                
+                if (path != null && path.Contains(n)) Gizmos.color = Color.green;
+
+                Gizmos.DrawCube(n.worldPosition, new Vector3(nodeDiameter - .1f, 0.1f, nodeDiameter - .1f));
             }
         }
     }

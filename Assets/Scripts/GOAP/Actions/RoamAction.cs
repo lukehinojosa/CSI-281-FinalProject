@@ -10,7 +10,7 @@ public class RoamAction : GOAPAction
     private System.Collections.Generic.List<Node> path;
     private int pathIndex = 0;
     private float moveSpeed = 3f;
-    
+
     private Vector3 targetPosition;
 
     void Awake()
@@ -44,8 +44,10 @@ public class RoamAction : GOAPAction
 
     public override bool CheckProceduralPrecondition(GameObject agent)
     {
-        // Find and store the position, without create a GameObject.
-        Vector3 randomDirection = Random.insideUnitCircle * roamRadius;
+        // Generate a random direction on the XZ plane.
+        Vector2 randomCircle = Random.insideUnitCircle * roamRadius;
+        Vector3 randomDirection = new Vector3(randomCircle.x, 0, randomCircle.y);
+
         Vector3 roamPoint = agent.transform.position + randomDirection;
         Node roamNode = grid.NodeFromWorldPoint(roamPoint);
 
