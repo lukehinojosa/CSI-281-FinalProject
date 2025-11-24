@@ -180,6 +180,13 @@ public class GOAPAgent : MonoBehaviour, IGoap
         // Continue with the current plan
         if (!action.Perform((GameObject)data))
         {
+            // If trying to go to a destination, forget it.
+            if (currentGoal != null && currentGoal.Contains(new KeyValuePair<string, object>("isAtDestination", true)))
+            {
+                Debug.Log("<color=red>Move Action Failed (Unreachable?). Clearing memory.</color>");
+                lastKnownPosition = Vector3.zero;
+            }
+            
             action.OnPlanAborted();
             fsm.ChangeState(IdleState);
             PlanAborted(action);
