@@ -558,6 +558,7 @@ GameObject:
   - component: {fileID: 721991494}
   - component: {fileID: 721991496}
   - component: {fileID: 721991495}
+  - component: {fileID: 721991497}
   m_Layer: 0
   m_Name: ThirdPerson
   m_TagString: Untagged
@@ -639,6 +640,18 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &721991497
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 721991493}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 562bcd84d9d23a849b9ac559e5ab78af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &768343248
 GameObject:
   m_ObjectHideFlags: 0
@@ -925,6 +938,7 @@ GameObject:
   - component: {fileID: 1327450048}
   - component: {fileID: 1327450050}
   - component: {fileID: 1327450049}
+  - component: {fileID: 1327450051}
   m_Layer: 0
   m_Name: BirdsEye
   m_TagString: Untagged
@@ -1006,6 +1020,18 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &1327450051
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1327450047}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 562bcd84d9d23a849b9ac559e5ab78af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1374507677
 GameObject:
   m_ObjectHideFlags: 0
@@ -1017,6 +1043,7 @@ GameObject:
   - component: {fileID: 1374507678}
   - component: {fileID: 1374507680}
   - component: {fileID: 1374507679}
+  - component: {fileID: 1374507681}
   m_Layer: 0
   m_Name: BirdsEye
   m_TagString: Untagged
@@ -1098,6 +1125,18 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &1374507681
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1374507677}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 562bcd84d9d23a849b9ac559e5ab78af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1466856083
 GameObject:
   m_ObjectHideFlags: 0
@@ -1699,6 +1738,7 @@ GameObject:
   - component: {fileID: 1947270602}
   - component: {fileID: 1947270601}
   - component: {fileID: 1947270600}
+  - component: {fileID: 1947270603}
   m_Layer: 0
   m_Name: Camera
   m_TagString: Untagged
@@ -1781,6 +1821,18 @@ Transform:
   - {fileID: 1909420426}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
+--- !u!114 &1947270603
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1947270599}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 562bcd84d9d23a849b9ac559e5ab78af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &2113050006
 GameObject:
   m_ObjectHideFlags: 0
@@ -1792,6 +1844,7 @@ GameObject:
   - component: {fileID: 2113050007}
   - component: {fileID: 2113050009}
   - component: {fileID: 2113050008}
+  - component: {fileID: 2113050010}
   m_Layer: 0
   m_Name: ThirdPerson
   m_TagString: Untagged
@@ -1873,6 +1926,18 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &2113050010
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2113050006}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 562bcd84d9d23a849b9ac559e5ab78af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

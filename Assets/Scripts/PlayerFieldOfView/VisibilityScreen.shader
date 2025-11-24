@@ -16,74 +16,91 @@ Shader "Unlit/VisibilityScreen"
             #include "UnityCG.cginc"
 
             sampler2D _VisibilityTex;
+            sampler2D _CameraDepthTexture; // Used for Perspective
+            
             float4 _GridWorldSize;
             float4 _GridBottomLeft;
 
             struct appdata
             {
                 float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
             };
 
             struct v2f
             {
                 float4 vertex : SV_POSITION;
-                float3 worldPos : TEXCOORD0;
+                float4 screenPos : TEXCOORD0; // For Depth
+                float3 worldPos : TEXCOORD1;  // For Ortho / Fallback
             };
 
             v2f vert (appdata v)
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                // Pass the world position of the quad pixel to the fragment shader
+                o.screenPos = ComputeScreenPos(o.vertex);
+                // Pass the actual world position of the quad pixel
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 return o;
             }
 
             fixed4 frag (v2f i) : SV_Target
             {
-                float3 rayOrigin;
-                float3 rayDir;
-
-                // Check if in Orthographic mode (w component is 1)
+                float3 worldPosToSample;
+                
+                // Orthographic mode
                 if (unity_OrthoParams.w > 0.5)
                 {
-                    // Orthographic
-                    // Origin is the pixel on the quad itself
-                    rayOrigin = i.worldPos;
-                    // Direction is constant: the camera's forward vector
-                    rayDir = -UNITY_MATRIX_V[2].xyz; 
+                    float3 rayOrigin = i.worldPos;
+                    float3 rayDir = -UNITY_MATRIX_V[2].xyz; // Camera Forward
+
+                    // Prevent divide by zero
+                    if (abs(rayDir.y) < 0.00001) return fixed4(0,0,0,1);
+
+                    // Ray-Plane Intersection with Y=0
+                    float t = -rayOrigin.y / rayDir.y;
+                    
+                    // If t < 0, looking up away from ground
+                    if (t < 0) return fixed4(0,0,0,1); 
+
+                    worldPosToSample = rayOrigin + rayDir * t;
                 }
-                else
+                // Perspective mode
+                else 
                 {
-                    // Perspective
-                    // Origin is the camera itself
-                    rayOrigin = _WorldSpaceCameraPos;
-                    // Direction is the vector from camera to the pixel on the quad
-                    rayDir = normalize(i.worldPos - _WorldSpaceCameraPos);
+                    float2 uv = i.screenPos.xy / i.screenPos.w;
+                    float rawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
+                    float linearDepth = Linear01Depth(rawDepth);
+
+                    // Check for Skybox / Far Plane
+                    if (linearDepth > 0.999) 
+                    {
+                        // Fallback to Ray-Plane Intersection if sky is hit
+                        float3 rayOrigin = _WorldSpaceCameraPos;
+                        float3 rayDir = normalize(i.worldPos - _WorldSpaceCameraPos);
+
+                        if (abs(rayDir.y) < 0.00001) return fixed4(0,0,0,1);
+                        float t = -rayOrigin.y / rayDir.y;
+                        if (t < 0) return fixed4(0,0,0,1);
+                        
+                        worldPosToSample = rayOrigin + rayDir * t;
+                    }
+                    else
+                    {
+                        // Reconstruct geometry from Depth Buffer
+                        float3 rayVector = normalize(i.worldPos - _WorldSpaceCameraPos);
+                        float zDepth = LinearEyeDepth(rawDepth);
+                        float3 camFwd = -UNITY_MATRIX_V[2].xyz; 
+                        float cosAngle = dot(rayVector, camFwd);
+                        float dist = zDepth / cosAngle;
+                        
+                        worldPosToSample = _WorldSpaceCameraPos + rayVector * dist;
+                    }
                 }
 
-                // Ray-plane Intersection
-                // Formula: Pos = Origin + Dir * t
-                // Pos.y must be 0.
-                // 0 = Origin.y + Dir.y * t
-                // t = -Origin.y / Dir.y
-
-                // Prevent division by zero if looking perfectly horizontal
-                if (abs(rayDir.y) < 0.00001) return fixed4(0,0,0,1);
-
-                float t = -rayOrigin.y / rayDir.y;
-
-                // If t < 0, the intersection is behind the camera (or looking up at the sky)
-                if (t < 0) return fixed4(0,0,0,1);
-
-                // Calculate the actual point on the ground
-                float3 groundPos = rayOrigin + rayDir * t;
-
-                // Map to texture
+                // Texture mapping
                 float2 visibilityUV;
-                visibilityUV.x = (groundPos.x - _GridBottomLeft.x) / _GridWorldSize.x;
-                visibilityUV.y = (groundPos.z - _GridBottomLeft.y) / _GridWorldSize.y;
+                visibilityUV.x = (worldPosToSample.x - _GridBottomLeft.x) / _GridWorldSize.x;
+                visibilityUV.y = (worldPosToSample.z - _GridBottomLeft.y) / _GridWorldSize.y;
                 
                 // Sample texture
                 float visibility = tex2D(_VisibilityTex, visibilityUV).a;
