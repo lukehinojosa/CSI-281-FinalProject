@@ -17,9 +17,7 @@ public class VisibilityManager : MonoBehaviour
     [Header("Quality Settings")]
     [Tooltip("Multiplier for FOV Resolution. 1 = Grid Size, 4+ = High Res Shadows.")]
     [Range(1, 10)]
-    public int resolutionScale = 4; 
-    [Tooltip("How fast the fog fades in and out.")]
-    public float fogSmoothSpeed = 10f; 
+    public int resolutionScale = 4;
 
     // Internal Lists & State
     private EntityCameraRig playerRig;
@@ -34,10 +32,6 @@ public class VisibilityManager : MonoBehaviour
     // Rendering Data
     private Texture2D visibilityTexture;
     private Color32[] textureColors;
-    
-    // Arrays for smoothing: Current brightness vs Target brightness
-    private float[] currentVisibilityValues;
-    private float[] targetVisibilityValues;
     
     // The High-Resolution Map of obstacles
     private bool[] highResWallMap; 
@@ -91,8 +85,6 @@ public class VisibilityManager : MonoBehaviour
         visibilityTexture.filterMode = FilterMode.Bilinear; // For smoothness
         
         textureColors = new Color32[texWidth * texHeight];
-        currentVisibilityValues = new float[texWidth * texHeight];
-        targetVisibilityValues = new float[texWidth * texHeight];
         highResWallMap = new bool[texWidth * texHeight];
 
         // 4. Build the static wall map for high-res rendering
@@ -110,22 +102,34 @@ public class VisibilityManager : MonoBehaviour
 
     void BuildHighResWallMap()
     {
-        Node[,] nodes = grid.GetGridNodes();
+        // 1. Calculate the physical size of a single high-res pixel in world space
+        float worldNodeSize = grid.nodeRadius * 2;
+        float pixelWorldSize = worldNodeSize / resolutionScale;
+        float pixelRadius = pixelWorldSize * 0.45f; // Slightly smaller than half to avoid edge overlaps
+
+        // 2. Get the bottom-left corner of the grid
+        Vector3 gridBottomLeft = grid.transform.position 
+                                 - Vector3.right * grid.gridWorldSize.x / 2 
+                                 - Vector3.forward * grid.gridWorldSize.y / 2;
+
         for (int y = 0; y < texHeight; y++)
         {
             for (int x = 0; x < texWidth; x++)
             {
-                // Map pixel coordinate back to coarse grid coordinate
-                int cx = x / resolutionScale;
-                int cy = y / resolutionScale;
+                // 3. Calculate the precise World Position of this specific pixel
+                float worldX = (x * pixelWorldSize) + (pixelWorldSize * 0.5f);
+                float worldZ = (y * pixelWorldSize) + (pixelWorldSize * 0.5f);
+                
+                Vector3 pixelWorldPos = gridBottomLeft + Vector3.right * worldX + Vector3.forward * worldZ;
 
-                if (cx < coarseGridX && cy < coarseGridY)
+                // 4. Perform a physics check at this specific pixel location
+                if (Physics.CheckSphere(pixelWorldPos, pixelRadius, grid.unwalkableMask))
                 {
-                    // If the coarse node is an obstacle, this pixel is a wall
-                    if (!nodes[cx, cy].isWalkable)
-                    {
-                        highResWallMap[x + y * texWidth] = true;
-                    }
+                    highResWallMap[x + y * texWidth] = true;
+                }
+                else
+                {
+                    highResWallMap[x + y * texWidth] = false;
                 }
             }
         }
@@ -136,13 +140,14 @@ public class VisibilityManager : MonoBehaviour
         HandleInput();
         
         // 1. Reset target visibility for this frame to 0
-        System.Array.Clear(targetVisibilityValues, 0, targetVisibilityValues.Length);
+        System.Array.Clear(textureColors, 0, textureColors.Length);
 
         // 2. Compute visibility on the high-res grid
         ComputeHighResVisibility();
 
-        // 3. Smoothly interpolate values and upload to GPU
-        UpdateTextureSmoothing();
+        // 3. Upload to GPU
+        visibilityTexture.SetPixels32(textureColors);
+        visibilityTexture.Apply(false);
         
         // 4. Update Character Transparency based on high-res data
         UpdateEntityTransparency();
@@ -240,31 +245,25 @@ public class VisibilityManager : MonoBehaviour
 
     private void ComputeHighResVisibility()
     {
-        // Local helper function to run shadowcaster for a single entity
+        // Calculate grid world bounds once
+        Vector3 worldBottomLeft = grid.transform.position 
+                                - Vector3.right * grid.gridWorldSize.x / 2 
+                                - Vector3.forward * grid.gridWorldSize.y / 2;
+
         void RunShadowCaster(EntityCameraRig rig)
         {
             if (rig == null) return;
+            Vector3 relativePos = rig.transform.position - worldBottomLeft;
+            int pixelX = Mathf.RoundToInt((relativePos.x / grid.gridWorldSize.x) * texWidth);
+            int pixelY = Mathf.RoundToInt((relativePos.z / grid.gridWorldSize.y) * texHeight);
+            if (pixelX < 0 || pixelX >= texWidth || pixelY < 0 || pixelY >= texHeight) return;
             
-            // Get coarse position
-            Node n = grid.NodeFromWorldPoint(rig.transform.position);
-            if (n == null) return;
-
-            // Convert to High-Res center
-            Vector2Int origin = new Vector2Int(
-                n.gridX * resolutionScale + (resolutionScale / 2), 
-                n.gridY * resolutionScale + (resolutionScale / 2)
-            );
-
-            // Scale radius
-            int scaledRadius = rig.fov.viewRadius * resolutionScale;
-
-            // Run ShadowCaster on the High-Res Grid
             ShadowCaster.ComputeVisibility(
                 texWidth, texHeight, 
-                origin, 
-                scaledRadius,
-                (x, y) => highResWallMap[x + y * texWidth], // IsBlocking?
-                (x, y) => targetVisibilityValues[x + y * texWidth] = 1.0f // SetVisible!
+                new Vector2Int(pixelX, pixelY), 
+                rig.fov.viewRadius * resolutionScale,
+                (x, y) => highResWallMap[x + y * texWidth], 
+                (x, y) => textureColors[x + y * texWidth].a = 255 
             );
         }
 
@@ -286,37 +285,24 @@ public class VisibilityManager : MonoBehaviour
                 foreach (var r in enemyRigs) RunShadowCaster(r);
         }
     }
-
-    private void UpdateTextureSmoothing()
-    {
-        for (int i = 0; i < currentVisibilityValues.Length; i++)
-        {
-            // Lerp current value towards target (0 or 1)
-            currentVisibilityValues[i] = Mathf.Lerp(currentVisibilityValues[i], targetVisibilityValues[i], Time.deltaTime * fogSmoothSpeed);
-            
-            // Map to byte for texture
-            textureColors[i].a = (byte)(currentVisibilityValues[i] * 255);
-        }
-
-        visibilityTexture.SetPixels32(textureColors);
-        visibilityTexture.Apply(false);
-    }
     
     private void UpdateEntityTransparency()
     {
-        // Helper to get visibility float (0.0 - 1.0) at a specific world position
+        Vector3 worldBottomLeft = grid.transform.position 
+                                  - Vector3.right * grid.gridWorldSize.x / 2 
+                                  - Vector3.forward * grid.gridWorldSize.y / 2;
+
         float GetVisibilityAtWorldPos(Vector3 pos)
         {
-            Node n = grid.NodeFromWorldPoint(pos);
-            if (n == null) return 0f;
+            Vector3 relativePos = pos - worldBottomLeft;
+            int pixelX = Mathf.RoundToInt((relativePos.x / grid.gridWorldSize.x) * texWidth);
+            int pixelY = Mathf.RoundToInt((relativePos.z / grid.gridWorldSize.y) * texHeight);
             
-            // Map coarse node to high-res pixel
-            int x = n.gridX * resolutionScale + (resolutionScale / 2);
-            int y = n.gridY * resolutionScale + (resolutionScale / 2);
-            
-            if (x >= 0 && x < texWidth && y >= 0 && y < texHeight)
-                return currentVisibilityValues[x + y * texWidth];
-            
+            if (pixelX >= 0 && pixelX < texWidth && pixelY >= 0 && pixelY < texHeight)
+            {
+                // Convert byte (0-255) back to float (0.0-1.0) for the material
+                return textureColors[pixelX + pixelY * texWidth].a / 255f;
+            }
             return 0f;
         }
 
