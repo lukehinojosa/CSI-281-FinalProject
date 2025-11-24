@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
-using System.Linq;
 
 public class VisibilityManager : MonoBehaviour
 {
@@ -9,42 +8,59 @@ public class VisibilityManager : MonoBehaviour
     public enum MainFowType { Combined, PlayerOnly, EnemiesOnly }
 
     [Header("Global Setup")]
-    public Camera mainCamera; // Assign your top-down overview camera here
+    public Camera mainCamera;
     public Grid grid;
+    [Tooltip("The Quad object used for the visibility screen.")]
     public Transform visibilityQuad; 
     public RawImage debugImage;
 
-    // Internal Lists
+    [Header("Quality Settings")]
+    [Tooltip("Multiplier for FOV Resolution. 1 = Grid Size, 4+ = High Res Shadows.")]
+    [Range(1, 10)]
+    public int resolutionScale = 4; 
+    [Tooltip("How fast the fog fades in and out.")]
+    public float fogSmoothSpeed = 10f; 
+
+    // Internal Lists & State
     private EntityCameraRig playerRig;
     private List<EntityCameraRig> enemyRigs = new List<EntityCameraRig>();
 
-    // State Machine
     private ViewMode currentViewMode = ViewMode.Main;
     private MainFowType mainFowState = MainFowType.Combined;
     
     private int currentEnemyIndex = 0;
     private bool isSecondaryCamera = false;
 
-    // Rendering
+    // Rendering Data
     private Texture2D visibilityTexture;
     private Color32[] textureColors;
-    private int gridSizeX;
-    private int gridSizeY;
+    
+    // Arrays for smoothing: Current brightness vs Target brightness
+    private float[] currentVisibilityValues;
+    private float[] targetVisibilityValues;
+    
+    // The High-Resolution Map of obstacles
+    private bool[] highResWallMap; 
+    
+    // Texture Dimensions
+    private int texWidth;
+    private int texHeight;
+    private int coarseGridX;
+    private int coarseGridY;
 
     void Start()
     {
         if (grid == null || visibilityQuad == null || mainCamera == null)
         {
-            Debug.LogError("Grid, Visibility Quad, or Main Camera not assigned!");
+            Debug.LogError("Grid, Visibility Quad, or Main Camera not assigned in VisibilityManager!");
             enabled = false;
             return;
         }
-        
-        // 1. Find Player
+
+        // Dynamic Discovery
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null) playerRig = playerObj.GetComponent<EntityCameraRig>();
 
-        // 2. Find Enemies
         GameObject[] enemyObjs = GameObject.FindGameObjectsWithTag("Enemy");
         foreach (var obj in enemyObjs)
         {
@@ -54,73 +70,112 @@ public class VisibilityManager : MonoBehaviour
 
         if (playerRig == null && enemyRigs.Count == 0)
         {
-            Debug.LogError("No Player or Enemies found! Ensure Tags are set.");
+            Debug.LogError("No Player or Enemies found! Ensure Tags are set correctly.");
             return;
         }
 
-        // Texture setup
-        gridSizeX = Mathf.RoundToInt(grid.gridWorldSize.x / (grid.nodeRadius * 2));
-        gridSizeY = Mathf.RoundToInt(grid.gridWorldSize.y / (grid.nodeRadius * 2));
+        // High Res Texture Setup
+        // 1. Calculate coarse grid dimensions (AI Grid)
+        coarseGridX = Mathf.RoundToInt(grid.gridWorldSize.x / (grid.nodeRadius * 2));
+        coarseGridY = Mathf.RoundToInt(grid.gridWorldSize.y / (grid.nodeRadius * 2));
 
-        visibilityTexture = new Texture2D(gridSizeX, gridSizeY, TextureFormat.Alpha8, false);
+        // 2. Calculate fine grid dimensions (Visual Grid)
+        texWidth = coarseGridX * resolutionScale;
+        texHeight = coarseGridY * resolutionScale;
+
+        Debug.Log($"Initializing FOW. Logic: {coarseGridX}x{coarseGridY}. Visual: {texWidth}x{texHeight}");
+
+        // 3. Initialize Arrays
+        visibilityTexture = new Texture2D(texWidth, texHeight, TextureFormat.Alpha8, false);
         visibilityTexture.wrapMode = TextureWrapMode.Clamp;
-        visibilityTexture.filterMode = FilterMode.Bilinear;
-        textureColors = new Color32[gridSizeX * gridSizeY];
+        visibilityTexture.filterMode = FilterMode.Bilinear; // For smoothness
+        
+        textureColors = new Color32[texWidth * texHeight];
+        currentVisibilityValues = new float[texWidth * texHeight];
+        targetVisibilityValues = new float[texWidth * texHeight];
+        highResWallMap = new bool[texWidth * texHeight];
 
+        // 4. Build the static wall map for high-res rendering
+        BuildHighResWallMap();
+
+        // 5. Shader Global Variables
         Vector3 bottomLeft = grid.transform.position - Vector3.right * grid.gridWorldSize.x / 2 - Vector3.forward * grid.gridWorldSize.y / 2;
         Shader.SetGlobalVector("_GridBottomLeft", new Vector4(bottomLeft.x, bottomLeft.z, 0, 0));
         Shader.SetGlobalVector("_GridWorldSize", new Vector4(grid.gridWorldSize.x, grid.gridWorldSize.y, 0, 0));
         Shader.SetGlobalTexture("_VisibilityTex", visibilityTexture);
-        
+
+        // Initialize Camera
         UpdateActiveCamera();
+    }
+
+    void BuildHighResWallMap()
+    {
+        Node[,] nodes = grid.GetGridNodes();
+        for (int y = 0; y < texHeight; y++)
+        {
+            for (int x = 0; x < texWidth; x++)
+            {
+                // Map pixel coordinate back to coarse grid coordinate
+                int cx = x / resolutionScale;
+                int cy = y / resolutionScale;
+
+                if (cx < coarseGridX && cy < coarseGridY)
+                {
+                    // If the coarse node is an obstacle, this pixel is a wall
+                    if (!nodes[cx, cy].isWalkable)
+                    {
+                        highResWallMap[x + y * texWidth] = true;
+                    }
+                }
+            }
+        }
     }
 
     void Update()
     {
         HandleInput();
-    }
-
-    void LateUpdate()
-    {
-        // 1. Calculate which nodes are visible based on current state
-        HashSet<Node> visibleNodes = GetCurrentVisibleNodes();
         
-        // 2. Paint the texture
-        UpdateVisibilityTexture(visibleNodes);
-        
-        // 3. Update entity transparency (hide enemies not in view)
-        UpdateEntityTransparency(visibleNodes);
+        // 1. Reset target visibility for this frame to 0
+        System.Array.Clear(targetVisibilityValues, 0, targetVisibilityValues.Length);
 
+        // 2. Compute visibility on the high-res grid
+        ComputeHighResVisibility();
+
+        // 3. Smoothly interpolate values and upload to GPU
+        UpdateTextureSmoothing();
+        
+        // 4. Update Character Transparency based on high-res data
+        UpdateEntityTransparency();
+
+        // 5. Debug View
         if (debugImage != null) debugImage.texture = visibilityTexture;
     }
 
     private void HandleInput()
     {
-        // Cycle Modes (Main -> Player -> Enemy)
+        // '1' Cycles View Modes
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
         {
             switch (currentViewMode)
             {
-                case ViewMode.Main:
-                    currentViewMode = ViewMode.Player;
+                case ViewMode.Main: 
+                    currentViewMode = ViewMode.Player; 
                     break;
-                case ViewMode.Player:
-                    // Only switch to Enemy mode if enemies exist
-                    currentViewMode = (enemyRigs.Count > 0) ? ViewMode.Enemy : ViewMode.Main;
+                case ViewMode.Player: 
+                    currentViewMode = (enemyRigs.Count > 0) ? ViewMode.Enemy : ViewMode.Main; 
                     break;
-                case ViewMode.Enemy:
-                    currentViewMode = ViewMode.Main;
+                case ViewMode.Enemy: 
+                    currentViewMode = ViewMode.Main; 
                     break;
             }
-            
-            // Reset sub-states on mode switch
-            isSecondaryCamera = false;
-            mainFowState = MainFowType.Combined; // Main always starts as Combined
+            // Reset sub-states
+            isSecondaryCamera = false; 
+            mainFowState = MainFowType.Combined; 
             Debug.Log($"Mode Switched: {currentViewMode}");
             UpdateActiveCamera();
         }
 
-        // Toggle Camera Angle (Player/Enemy)
+        // '2' Toggles Camera Angle
         if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
         {
             if (currentViewMode != ViewMode.Main)
@@ -131,7 +186,7 @@ public class VisibilityManager : MonoBehaviour
             }
         }
 
-        // Cycle sub-content
+        // 'Tab' Cycles Contents inside a mode
         if (Input.GetKeyDown(KeyCode.Tab))
         {
             if (currentViewMode == ViewMode.Main)
@@ -155,36 +210,21 @@ public class VisibilityManager : MonoBehaviour
 
     private void UpdateActiveCamera()
     {
-        // 1. Disable all cameras
+        // Disable all cameras
         if (mainCamera) mainCamera.gameObject.SetActive(false);
-        if (playerRig)
-        {
-            if (playerRig.primaryCamera) playerRig.primaryCamera.gameObject.SetActive(false);
-            if (playerRig.secondaryCamera) playerRig.secondaryCamera.gameObject.SetActive(false);
-        }
-        foreach (var rig in enemyRigs)
-        {
-            if (rig.primaryCamera) rig.primaryCamera.gameObject.SetActive(false);
-            if (rig.secondaryCamera) rig.secondaryCamera.gameObject.SetActive(false);
-        }
+        if (playerRig) { if (playerRig.primaryCamera) playerRig.primaryCamera.gameObject.SetActive(false); if (playerRig.secondaryCamera) playerRig.secondaryCamera.gameObject.SetActive(false); }
+        foreach (var rig in enemyRigs) { if (rig.primaryCamera) rig.primaryCamera.gameObject.SetActive(false); if (rig.secondaryCamera) rig.secondaryCamera.gameObject.SetActive(false); }
 
-        // 2. Select New Camera
+        // Select new target camera
         Camera targetCam = null;
-
         switch (currentViewMode)
         {
-            case ViewMode.Main:
-                targetCam = mainCamera;
-                break;
-            case ViewMode.Player:
-                if (playerRig) targetCam = playerRig.GetCamera(isSecondaryCamera);
-                break;
-            case ViewMode.Enemy:
-                if (enemyRigs.Count > 0) targetCam = enemyRigs[currentEnemyIndex].GetCamera(isSecondaryCamera);
-                break;
+            case ViewMode.Main: targetCam = mainCamera; break;
+            case ViewMode.Player: if (playerRig) targetCam = playerRig.GetCamera(isSecondaryCamera); break;
+            case ViewMode.Enemy: if (enemyRigs.Count > 0) targetCam = enemyRigs[currentEnemyIndex].GetCamera(isSecondaryCamera); break;
         }
 
-        // 3. Activate and Move Quad
+        // Activate and Move Quad
         if (targetCam != null)
         {
             targetCam.gameObject.SetActive(true);
@@ -198,64 +238,89 @@ public class VisibilityManager : MonoBehaviour
         }
     }
 
-    // Logic to combine different FOVs based on the state
-    private HashSet<Node> GetCurrentVisibleNodes()
+    private void ComputeHighResVisibility()
     {
-        HashSet<Node> nodes = new HashSet<Node>();
+        // Local helper function to run shadowcaster for a single entity
+        void RunShadowCaster(EntityCameraRig rig)
+        {
+            if (rig == null) return;
+            
+            // Get coarse position
+            Node n = grid.NodeFromWorldPoint(rig.transform.position);
+            if (n == null) return;
 
+            // Convert to High-Res center
+            Vector2Int origin = new Vector2Int(
+                n.gridX * resolutionScale + (resolutionScale / 2), 
+                n.gridY * resolutionScale + (resolutionScale / 2)
+            );
+
+            // Scale radius
+            int scaledRadius = rig.fov.viewRadius * resolutionScale;
+
+            // Run ShadowCaster on the High-Res Grid
+            ShadowCaster.ComputeVisibility(
+                texWidth, texHeight, 
+                origin, 
+                scaledRadius,
+                (x, y) => highResWallMap[x + y * texWidth], // IsBlocking?
+                (x, y) => targetVisibilityValues[x + y * texWidth] = 1.0f // SetVisible!
+            );
+        }
+
+        // Determine who to compute for
         if (currentViewMode == ViewMode.Player)
         {
-            if(playerRig) nodes.UnionWith(playerRig.fov.visibleNodes);
+            RunShadowCaster(playerRig);
         }
         else if (currentViewMode == ViewMode.Enemy)
         {
-            if (enemyRigs.Count > 0) nodes.UnionWith(enemyRigs[currentEnemyIndex].fov.visibleNodes);
+            if (enemyRigs.Count > 0) RunShadowCaster(enemyRigs[currentEnemyIndex]);
         }
         else if (currentViewMode == ViewMode.Main)
         {
-            // Handle cycling in Main mode
             if (mainFowState == MainFowType.Combined || mainFowState == MainFowType.PlayerOnly)
-            {
-                if(playerRig) nodes.UnionWith(playerRig.fov.visibleNodes);
-            }
+                RunShadowCaster(playerRig);
             
             if (mainFowState == MainFowType.Combined || mainFowState == MainFowType.EnemiesOnly)
-            {
-                foreach (var rig in enemyRigs)
-                {
-                    nodes.UnionWith(rig.fov.visibleNodes);
-                }
-            }
+                foreach (var r in enemyRigs) RunShadowCaster(r);
         }
-
-        return nodes;
     }
 
-    private void UpdateVisibilityTexture(HashSet<Node> visibleNodes)
+    private void UpdateTextureSmoothing()
     {
-        Node[,] allNodes = grid.GetGridNodes();
-        if (allNodes == null) return;
-
-        byte visible = 255;
-        byte hidden = 0;
-
-        for (int y = 0; y < gridSizeY; y++) {
-            for (int x = 0; x < gridSizeX; x++) {
-                if (visibleNodes.Contains(allNodes[x, y])) {
-                    textureColors[x + y * gridSizeX].a = visible;
-                } else {
-                    textureColors[x + y * gridSizeX].a = hidden;
-                }
-            }
+        for (int i = 0; i < currentVisibilityValues.Length; i++)
+        {
+            // Lerp current value towards target (0 or 1)
+            currentVisibilityValues[i] = Mathf.Lerp(currentVisibilityValues[i], targetVisibilityValues[i], Time.deltaTime * fogSmoothSpeed);
+            
+            // Map to byte for texture
+            textureColors[i].a = (byte)(currentVisibilityValues[i] * 255);
         }
 
         visibilityTexture.SetPixels32(textureColors);
         visibilityTexture.Apply(false);
     }
     
-    private void UpdateEntityTransparency(HashSet<Node> visibleNodes)
+    private void UpdateEntityTransparency()
     {
-        // Helper to determine if a specific rig is the one currently being controlled/spectated
+        // Helper to get visibility float (0.0 - 1.0) at a specific world position
+        float GetVisibilityAtWorldPos(Vector3 pos)
+        {
+            Node n = grid.NodeFromWorldPoint(pos);
+            if (n == null) return 0f;
+            
+            // Map coarse node to high-res pixel
+            int x = n.gridX * resolutionScale + (resolutionScale / 2);
+            int y = n.gridY * resolutionScale + (resolutionScale / 2);
+            
+            if (x >= 0 && x < texWidth && y >= 0 && y < texHeight)
+                return currentVisibilityValues[x + y * texWidth];
+            
+            return 0f;
+        }
+
+        // Helper to check if we are currently spectating a specific rig
         bool IsSpectating(EntityCameraRig rig)
         {
             if (currentViewMode == ViewMode.Player && rig == playerRig) return true;
@@ -266,29 +331,15 @@ public class VisibilityManager : MonoBehaviour
         // Update Player
         if (playerRig)
         {
-            if (IsSpectating(playerRig))
-            {
-                playerRig.SetMaterialAlpha(1.0f);
-            }
-            else
-            {
-                Node n = grid.NodeFromWorldPoint(playerRig.transform.position);
-                playerRig.SetMaterialAlpha(visibleNodes.Contains(n) ? 1.0f : 0.0f);
-            }
+            if (IsSpectating(playerRig)) playerRig.SetMaterialAlpha(1.0f);
+            else playerRig.SetMaterialAlpha(GetVisibilityAtWorldPos(playerRig.transform.position));
         }
 
         // Update Enemies
         foreach (var rig in enemyRigs)
         {
-            if (IsSpectating(rig))
-            {
-                rig.SetMaterialAlpha(1.0f);
-            }
-            else
-            {
-                Node n = grid.NodeFromWorldPoint(rig.transform.position);
-                rig.SetMaterialAlpha(visibleNodes.Contains(n) ? 1.0f : 0.0f);
-            }
+            if (IsSpectating(rig)) rig.SetMaterialAlpha(1.0f);
+            else rig.SetMaterialAlpha(GetVisibilityAtWorldPos(rig.transform.position));
         }
     }
 }
