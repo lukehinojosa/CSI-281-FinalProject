@@ -241,6 +241,19 @@ public class VisibilityManager : MonoBehaviour
                 visibilityQuad.localScale = Vector3.one;
             }
         }
+        
+        // Update Player Control Scheme
+        if (playerRig != null)
+        {
+            PlayerController controller = playerRig.GetComponent<PlayerController>();
+            if (controller != null)
+            {
+                // If spectating the Player and using Secondary (Perspective) camera:
+                bool isPerspective = (currentViewMode == ViewMode.Player && isSecondaryCamera);
+                
+                controller.SetControlMode(isPerspective);
+            }
+        }
     }
 
     private void ComputeHighResVisibility()
