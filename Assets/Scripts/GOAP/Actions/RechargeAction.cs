@@ -73,7 +73,7 @@ public class RechargeAction : GOAPAction
         if (pathIndex < path.Count)
         {
             Vector3 worldTargetPos = path[pathIndex].worldPosition;
-            agent.transform.position = Vector3.MoveTowards(agent.transform.position, worldTargetPos, moveSpeed * Time.deltaTime);
+            goapAgent.MoveTowards(worldTargetPos, moveSpeed);
 
             if (Vector3.Distance(agent.transform.position, worldTargetPos) < 0.1f)
             {

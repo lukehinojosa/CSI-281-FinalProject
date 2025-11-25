@@ -11,12 +11,14 @@ public class RoamAction : GOAPAction
     private int pathIndex = 0;
     private float moveSpeed = 3f;
 
+    private GOAPAgent goapAgent;
     private Vector3 targetPosition;
 
     void Awake()
     {
         pathfinder = FindObjectOfType<Pathfinding>();
         grid = FindObjectOfType<Grid>();
+        goapAgent = GetComponent<GOAPAgent>(); 
 
         // This action is only possible if there is nothing better to do.
         AddPrecondition("hasDestination", false);
@@ -79,7 +81,7 @@ public class RoamAction : GOAPAction
         if (pathIndex < path.Count)
         {
             Vector3 worldTargetPos = path[pathIndex].worldPosition;
-            agent.transform.position = Vector3.MoveTowards(agent.transform.position, worldTargetPos, moveSpeed * Time.deltaTime);
+            goapAgent.MoveTowards(worldTargetPos, moveSpeed);
 
             if (Vector3.Distance(agent.transform.position, worldTargetPos) < 0.1f)
             {

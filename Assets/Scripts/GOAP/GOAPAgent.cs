@@ -27,6 +27,10 @@ public class GOAPAgent : MonoBehaviour, IGoap
     
     [HideInInspector]
     public GameObject[] energyStations;
+    
+    private float turnSmoothVelocity;
+    [Tooltip("How fast the enemy smooths its rotation.")]
+    public float turnSmoothTime = 0.1f; 
 
     void Awake()
     {
@@ -273,5 +277,24 @@ public class GOAPAgent : MonoBehaviour, IGoap
     {
         Debug.Log("<color=cyan>Energy Replenished!</color>");
         currentEnergy = maxEnergy;
+    }
+    
+    public void MoveTowards(Vector3 targetPosition, float speed)
+    {
+        // 1. Calculate Direction
+        Vector3 direction = (targetPosition - transform.position).normalized;
+        // Flatten Y to ensure it only rotates on the Y axis
+        direction.y = 0;
+
+        // 2. Rotation
+        if (direction != Vector3.zero && direction.sqrMagnitude > 0.001f)
+        {
+            float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+            float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnSmoothVelocity, turnSmoothTime);
+            transform.rotation = Quaternion.Euler(0f, angle, 0f);
+        }
+
+        // 3. Update Position
+        transform.position = Vector3.MoveTowards(transform.position, targetPosition, speed * Time.deltaTime);
     }
 }
