@@ -88,4 +88,21 @@ public class MoveToAction : GOAPAction
 
         return true; // Action is still in progress.
     }
+    
+    public void UpdatePath(Vector3 newTargetPosition)
+    {
+        targetPosition = newTargetPosition;
+        
+        // Update the visual debug target if it exists
+        if (target != null)
+        {
+            target.transform.position = targetPosition;
+        }
+
+        // Recalculate the path immediately from current position
+        path = pathfinder.FindPath(transform.position, targetPosition);
+        
+        // Reset index to 0 so it starts following the new path from the beginning
+        pathIndex = 0;
+    }
 }

@@ -19,6 +19,24 @@ public class Pathfinding : MonoBehaviour
 
         Node startNode = grid.NodeFromWorldPoint(startPos);
         Node targetNode = grid.NodeFromWorldPoint(targetPos);
+        
+        // If the agent or target are slightly inside a wall, snap to the nearest valid node.
+        
+        if (!startNode.isWalkable)
+        {
+            startNode = GetClosestWalkableNeighbor(startNode);
+        }
+
+        if (!targetNode.isWalkable)
+        {
+            targetNode = GetClosestWalkableNeighbor(targetNode);
+        }
+
+        // If after checking neighbors we still have bad nodes, we can't path.
+        if (startNode == null || targetNode == null || !startNode.isWalkable || !targetNode.isWalkable)
+        {
+            return null;
+        }
 
         // A* Algorithm Core
         List<Node> openSet = new List<Node>();
@@ -74,6 +92,27 @@ public class Pathfinding : MonoBehaviour
 
         // No path was found.
         return null; 
+    }
+    
+    // Helper method to find a valid node if the requested one is blocked
+    private Node GetClosestWalkableNeighbor(Node node)
+    {
+        Node bestNode = null;
+        float minDst = float.MaxValue;
+
+        foreach (Node neighbor in grid.GetNeighbours(node))
+        {
+            if (neighbor.isWalkable)
+            {
+                float dst = GetDistance(node, neighbor);
+                if (dst < minDst)
+                {
+                    minDst = dst;
+                    bestNode = neighbor;
+                }
+            }
+        }
+        return bestNode; // Returns null if no walkable neighbors found
     }
 
     // Reconstructs the path by working backwards from the end node.
