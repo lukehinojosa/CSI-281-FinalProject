@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: EnemyMaterial
-  m_Shader: {fileID: 4800000, guid: 3351b78768a4e8c43b72155881bb2078, type: 3}
+  m_Shader: {fileID: 4800000, guid: 45a31aa805cb27d4aa8dd9efd2085309, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -76,6 +76,7 @@ Material:
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _UVSec: 0
+    - _ZTest: 4
     - _ZWrite: 1
     m_Colors:
     - _Color: {r: 1, g: 0, b: 0.04843235, a: 1}

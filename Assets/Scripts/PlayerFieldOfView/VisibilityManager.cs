@@ -18,8 +18,7 @@ public class VisibilityManager : MonoBehaviour
     [Tooltip("Multiplier for FOV Resolution. 1 = Grid Size, 4+ = High Res Shadows.")]
     [Range(1, 10)]
     public int resolutionScale = 4;
-
-    // Internal Lists & State
+    
     private EntityCameraRig playerRig;
     private List<EntityCameraRig> enemyRigs = new List<EntityCameraRig>();
 
@@ -69,32 +68,34 @@ public class VisibilityManager : MonoBehaviour
         }
 
         // High Res Texture Setup
-        // 1. Calculate coarse grid dimensions (AI Grid)
+        // Calculate coarse grid dimensions (AI Grid)
         coarseGridX = Mathf.RoundToInt(grid.gridWorldSize.x / (grid.nodeRadius * 2));
         coarseGridY = Mathf.RoundToInt(grid.gridWorldSize.y / (grid.nodeRadius * 2));
 
-        // 2. Calculate fine grid dimensions (Visual Grid)
+        // Calculate fine grid dimensions (Visual Grid)
         texWidth = coarseGridX * resolutionScale;
         texHeight = coarseGridY * resolutionScale;
 
         Debug.Log($"Initializing FOW. Logic: {coarseGridX}x{coarseGridY}. Visual: {texWidth}x{texHeight}");
 
-        // 3. Initialize Arrays
+        // Initialize Arrays
         visibilityTexture = new Texture2D(texWidth, texHeight, TextureFormat.Alpha8, false);
         visibilityTexture.wrapMode = TextureWrapMode.Clamp;
-        visibilityTexture.filterMode = FilterMode.Bilinear; // For smoothness
+        visibilityTexture.filterMode = FilterMode.Bilinear;
         
         textureColors = new Color32[texWidth * texHeight];
         highResWallMap = new bool[texWidth * texHeight];
 
-        // 4. Build the static wall map for high-res rendering
+        // Build the high-res wall map using Physics
         BuildHighResWallMap();
 
-        // 5. Shader Global Variables
+        // Shader Global Variables
         Vector3 bottomLeft = grid.transform.position - Vector3.right * grid.gridWorldSize.x / 2 - Vector3.forward * grid.gridWorldSize.y / 2;
         Shader.SetGlobalVector("_GridBottomLeft", new Vector4(bottomLeft.x, bottomLeft.z, 0, 0));
         Shader.SetGlobalVector("_GridWorldSize", new Vector4(grid.gridWorldSize.x, grid.gridWorldSize.y, 0, 0));
         Shader.SetGlobalTexture("_VisibilityTex", visibilityTexture);
+        
+        ResetEntityRendering();
 
         // Initialize Camera
         UpdateActiveCamera();
@@ -102,12 +103,12 @@ public class VisibilityManager : MonoBehaviour
 
     void BuildHighResWallMap()
     {
-        // 1. Calculate the physical size of a single high-res pixel in world space
+        // Calculate the physical size of a single high-res pixel in world space
         float worldNodeSize = grid.nodeRadius * 2;
         float pixelWorldSize = worldNodeSize / resolutionScale;
         float pixelRadius = pixelWorldSize * 0.45f; // Slightly smaller than half to avoid edge overlaps
 
-        // 2. Get the bottom-left corner of the grid
+        // Get the bottom-left corner of the grid
         Vector3 gridBottomLeft = grid.transform.position 
                                  - Vector3.right * grid.gridWorldSize.x / 2 
                                  - Vector3.forward * grid.gridWorldSize.y / 2;
@@ -116,13 +117,14 @@ public class VisibilityManager : MonoBehaviour
         {
             for (int x = 0; x < texWidth; x++)
             {
-                // 3. Calculate the precise World Position of this specific pixel
+                // Calculate the precise World Position of this specific pixel
                 float worldX = (x * pixelWorldSize) + (pixelWorldSize * 0.5f);
                 float worldZ = (y * pixelWorldSize) + (pixelWorldSize * 0.5f);
                 
                 Vector3 pixelWorldPos = gridBottomLeft + Vector3.right * worldX + Vector3.forward * worldZ;
 
-                // 4. Perform a physics check at this specific pixel location
+                // Perform a physics check at this specific pixel location
+                // This creates high-fidelity wall definitions independent of the coarse grid
                 if (Physics.CheckSphere(pixelWorldPos, pixelRadius, grid.unwalkableMask))
                 {
                     highResWallMap[x + y * texWidth] = true;
@@ -139,20 +141,17 @@ public class VisibilityManager : MonoBehaviour
     {
         HandleInput();
         
-        // 1. Reset target visibility for this frame to 0
+        // Reset target visibility for this frame to 0 
         System.Array.Clear(textureColors, 0, textureColors.Length);
 
-        // 2. Compute visibility on the high-res grid
+        // Compute visibility on the high-res grid
         ComputeHighResVisibility();
 
-        // 3. Upload to GPU
+        // Upload to GPU immediately
         visibilityTexture.SetPixels32(textureColors);
         visibilityTexture.Apply(false);
         
-        // 4. Update Character Transparency based on high-res data
-        UpdateEntityTransparency();
-
-        // 5. Debug View
+        // Debug View
         if (debugImage != null) debugImage.texture = visibilityTexture;
     }
 
@@ -250,7 +249,6 @@ public class VisibilityManager : MonoBehaviour
             {
                 // If spectating the Player and using Secondary (Perspective) camera:
                 bool isPerspective = (currentViewMode == ViewMode.Player && isSecondaryCamera);
-                
                 controller.SetControlMode(isPerspective);
             }
         }
@@ -266,11 +264,19 @@ public class VisibilityManager : MonoBehaviour
         void RunShadowCaster(EntityCameraRig rig)
         {
             if (rig == null) return;
+            
+            // Calculate relative world position
             Vector3 relativePos = rig.transform.position - worldBottomLeft;
+
+            // Convert directly to High-Res Grid Coordinates
+            // (Relative X / Total Width) * Total Pixels
             int pixelX = Mathf.RoundToInt((relativePos.x / grid.gridWorldSize.x) * texWidth);
             int pixelY = Mathf.RoundToInt((relativePos.z / grid.gridWorldSize.y) * texHeight);
+
+            // Bounds Check
             if (pixelX < 0 || pixelX >= texWidth || pixelY < 0 || pixelY >= texHeight) return;
             
+            // Run ShadowCaster
             ShadowCaster.ComputeVisibility(
                 texWidth, texHeight, 
                 new Vector2Int(pixelX, pixelY), 
@@ -299,46 +305,18 @@ public class VisibilityManager : MonoBehaviour
         }
     }
     
-    private void UpdateEntityTransparency()
+    private void ResetEntityRendering()
     {
-        Vector3 worldBottomLeft = grid.transform.position 
-                                  - Vector3.right * grid.gridWorldSize.x / 2 
-                                  - Vector3.forward * grid.gridWorldSize.y / 2;
+        // Set the Render Queue higher than the Fog Quad.
+        int entityQueue = 3002;
 
-        float GetVisibilityAtWorldPos(Vector3 pos)
+        void SetQueue(EntityCameraRig rig)
         {
-            Vector3 relativePos = pos - worldBottomLeft;
-            int pixelX = Mathf.RoundToInt((relativePos.x / grid.gridWorldSize.x) * texWidth);
-            int pixelY = Mathf.RoundToInt((relativePos.z / grid.gridWorldSize.y) * texHeight);
-            
-            if (pixelX >= 0 && pixelX < texWidth && pixelY >= 0 && pixelY < texHeight)
-            {
-                // Convert byte (0-255) back to float (0.0-1.0) for the material
-                return textureColors[pixelX + pixelY * texWidth].a / 255f;
-            }
-            return 0f;
+            if (rig == null || rig.meshRenderer == null) return;
+            rig.meshRenderer.material.renderQueue = entityQueue;
         }
 
-        // Helper to check if we are currently spectating a specific rig
-        bool IsSpectating(EntityCameraRig rig)
-        {
-            if (currentViewMode == ViewMode.Player && rig == playerRig) return true;
-            if (currentViewMode == ViewMode.Enemy && enemyRigs.Count > 0 && rig == enemyRigs[currentEnemyIndex]) return true;
-            return false;
-        }
-
-        // Update Player
-        if (playerRig)
-        {
-            if (IsSpectating(playerRig)) playerRig.SetMaterialAlpha(1.0f);
-            else playerRig.SetMaterialAlpha(GetVisibilityAtWorldPos(playerRig.transform.position));
-        }
-
-        // Update Enemies
-        foreach (var rig in enemyRigs)
-        {
-            if (IsSpectating(rig)) rig.SetMaterialAlpha(1.0f);
-            else rig.SetMaterialAlpha(GetVisibilityAtWorldPos(rig.transform.position));
-        }
+        if (playerRig) SetQueue(playerRig);
+        foreach (var rig in enemyRigs) SetQueue(rig);
     }
 }
