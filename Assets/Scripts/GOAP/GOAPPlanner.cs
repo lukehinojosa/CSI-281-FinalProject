@@ -71,7 +71,7 @@ public class GOAPPlanner
         foreach (GOAPAction action in usableActions)
         {
             // Debug
-            Debug.Log("--- Checking Action: " + action.GetType().Name + " ---");
+            Debug.Log("Checking Action: " + action.GetType().Name);
             Debug.Log("World State: {" + PrintState(parent.state) + "}");
             Debug.Log("Action Preconditions: {" + PrintState(action.Preconditions) + "}");
             bool preconditionsMet = StateContains(parent.state, action.Preconditions);

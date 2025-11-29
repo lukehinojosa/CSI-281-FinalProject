@@ -4,6 +4,7 @@ using System.Linq;
 public class RechargeAction : GOAPAction
 {
     private Pathfinding pathfinder;
+    private Grid grid;
     private System.Collections.Generic.List<Node> path;
     private int pathIndex = 0;
     private float moveSpeed = 5f;
@@ -14,6 +15,7 @@ public class RechargeAction : GOAPAction
     void Awake()
     {
         pathfinder = FindObjectOfType<Pathfinding>();
+        grid = FindObjectOfType<Grid>();
         goapAgent = GetComponent<GOAPAgent>();
 
         // This action is only possible if the agent is low on energy.
@@ -40,19 +42,47 @@ public class RechargeAction : GOAPAction
 
     public override bool CheckProceduralPrecondition(GameObject agent)
     {
-        // Find and store the position, but DO NOT create a GameObject.
         if (goapAgent.energyStations == null || goapAgent.energyStations.Length == 0)
             return false;
 
-        GameObject closestStation = goapAgent.energyStations
-            .OrderBy(station => Vector3.Distance(station.transform.position, agent.transform.position))
-            .FirstOrDefault();
+        // Sort stations by distance
+        var sortedStations = goapAgent.energyStations
+            .OrderBy(station => Vector3.Distance(station.transform.position, agent.transform.position));
 
-        if (closestStation == null)
-            return false;
+        foreach (var station in sortedStations)
+        {
+            // Get the node closest to the station
+            Node stationNode = grid.NodeFromWorldPoint(station.transform.position);
+            
+            // Check for a walkable station
+            if (stationNode.isWalkable)
+            {
+                targetPosition = station.transform.position;
+                return true;
+            }
+            
+            // Check for a walkable neighbor of the nearest station
+            Node validNeighbor = GetWalkableNeighbor(stationNode);
+            if (validNeighbor != null)
+            {
+                targetPosition = validNeighbor.worldPosition;
+                return true;
+            }
+            
+            // If completely unreachable, go to the next closest station
+        }
 
-        targetPosition = closestStation.transform.position;
-        return true;
+        // No reachable stations found
+        return false;
+    }
+    
+    private Node GetWalkableNeighbor(Node node)
+    {
+        foreach (Node neighbor in grid.GetNeighbours(node))
+        {
+            if (neighbor.isWalkable) return neighbor;
+        }
+        return null;
     }
 
     public override bool Perform(GameObject agent)
