@@ -78,7 +78,7 @@ public class MoveToAction : GOAPAction
             Vector3 worldTargetPos = path[pathIndex].worldPosition;
             goapAgent.MoveTowards(worldTargetPos, moveSpeed);
             
-            if (Vector3.Distance(agent.transform.position, worldTargetPos) < 0.1f)
+            if (Vector3.Distance(agent.transform.position, worldTargetPos) < 0.2f)
             {
                 pathIndex++;
             }
@@ -96,18 +96,26 @@ public class MoveToAction : GOAPAction
     
     public void UpdatePath(Vector3 newTargetPosition)
     {
-        targetPosition = newTargetPosition;
-        
-        // Update the visual debug target if it exists
-        if (target != null)
-        {
-            target.transform.position = targetPosition;
-        }
+        // Attempt to calculate the new path
+        List<Node> newPath = pathfinder.FindPath(transform.position, newTargetPosition);
 
-        // Recalculate the path immediately from current position
-        path = pathfinder.FindPath(transform.position, targetPosition);
-        
-        // Reset index to 0 so it starts following the new path from the beginning
-        pathIndex = 0;
+        // If the new path is valid and leads somewhere, switch
+        if (newPath != null && newPath.Count > 0)
+        {
+            path = newPath;
+            pathIndex = 0;
+            
+            // Update internal target
+            targetPosition = newTargetPosition;
+            if (target != null)
+            {
+                target.transform.position = targetPosition;
+            }
+        }
+        else
+        {
+            // If pathfinding failed, keep following the old path.
+            // The agent will try again in repathRate seconds.
+        }
     }
 }

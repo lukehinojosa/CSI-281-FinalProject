@@ -188,33 +188,31 @@ public class GOAPAgent : MonoBehaviour, IGoap
                 return;
             }
             // Already chasing. Path update check.
-            else if (isCurrentlyChasing)
+            else if (isCurrentlyChasing && action.target != null)
             {
-                if (action.target != null)
+                // Check distance
+                Vector3 currentWaypointAim = action.target.transform.position;
+                if (Vector3.Distance(target.position, currentWaypointAim) > replanThreshold)
                 {
-                    // Check distance
-                    Vector3 currentWaypointAim = action.target.transform.position;
-                    if (Vector3.Distance(target.position, currentWaypointAim) > replanThreshold)
+                    // Only update if enough time has passed since the last calculation
+                    if (Time.time >= nextRepathTime)
                     {
-                        // Only update if enough time has passed since the last calculation
-                        if (Time.time >= nextRepathTime)
-                        {
-                            nextRepathTime = Time.time + repathRate;
+                        nextRepathTime = Time.time + repathRate;
 
-                            if (action is MoveToAction moveAction)
-                            {
-                                // Debug.Log("Updating chase path");
-                                moveAction.UpdatePath(lastKnownPosition);
-                            }
-                            else
-                            {
-                                action.OnPlanAborted();
-                                currentActions.Clear();
-                                fsm.ChangeState(PlanState);
-                            }
+                        if (action is MoveToAction moveAction)
+                        {
+                            // Debug.Log("Updating chase path");
+                            moveAction.UpdatePath(lastKnownPosition);
                         }
-                        return;
+                        else
+                        {
+                            action.OnPlanAborted();
+                            currentActions.Clear();
+                            fsm.ChangeState(PlanState);
+                            return;
+                        }
                     }
+                    // If timer is not ready, keep moving towards the old point.
                 }
             }
         }

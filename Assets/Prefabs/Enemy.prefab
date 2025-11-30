@@ -104,7 +104,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 0}
-  replanThreshold: 2
+  replanThreshold: 1
   lastKnownPosition: {x: 0, y: 0, z: 0}
   currentEnergy: 100
   maxEnergy: 100
@@ -113,6 +113,7 @@ MonoBehaviour:
   energyStations: []
   turnSmoothTime: 0.1
   debugStateName: None
+  repathRate: 0.1
 --- !u!114 &8277159289893894369
 MonoBehaviour:
   m_ObjectHideFlags: 0
