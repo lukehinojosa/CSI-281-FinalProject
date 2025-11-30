@@ -152,7 +152,7 @@ public class ObstacleGenerator : MonoBehaviour
         newWall.transform.SetParent(obstacleContainer);
         
         // Scale
-        newWall.transform.localScale = new Vector3(diameter, obstacleHeight, diameter);
+        newWall.transform.localScale = new Vector3(diameter * 0.95f, obstacleHeight, diameter * 0.95f);
         
         int unwalkableLayer = LayerMask.NameToLayer("Unwalkable");
         if (unwalkableLayer != -1) newWall.layer = unwalkableLayer;

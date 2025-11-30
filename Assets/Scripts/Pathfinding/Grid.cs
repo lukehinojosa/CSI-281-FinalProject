@@ -66,7 +66,7 @@ public class Grid : MonoBehaviour
                 Vector3 worldPoint = worldBottomLeft + Vector3.right * (x * nodeDiameter + nodeRadius) + Vector3.forward * (y * nodeDiameter + nodeRadius);
                 
                 // Physics Check
-                bool walkable = !(Physics.CheckSphere(worldPoint, nodeRadius, unwalkableMask));
+                bool walkable = !(Physics.CheckSphere(worldPoint, nodeRadius * 0.9f, unwalkableMask));
                 
                 grid[x, y] = new Node(walkable, worldPoint, x, y);
             }
@@ -82,7 +82,7 @@ public class Grid : MonoBehaviour
             for (int y = 0; y < gridSizeY; y++)
             {
                 // Recheck the walkable status using the physics check.
-                bool walkable = !(Physics.CheckSphere(grid[x, y].worldPosition, nodeRadius, unwalkableMask));
+                bool walkable = !(Physics.CheckSphere(grid[x, y].worldPosition, nodeRadius * 0.9f, unwalkableMask));
                 grid[x, y].isWalkable = walkable;
             }
         }
