@@ -38,6 +38,10 @@ public class GOAPAgent : MonoBehaviour, IGoap
     private Renderer agentRenderer;
     private Color colorPursue = Color.red;
     private Color colorRecharge = new Color(0.6f, 0f, 1f);
+    
+    [Header("Performance")]
+    public float repathRate = 0.25f; // Calculate path 4 times per second
+    private float nextRepathTime = 0;
 
     void Awake()
     {
@@ -168,12 +172,12 @@ public class GOAPAgent : MonoBehaviour, IGoap
         }
         
         // Priority 2: Chase player
-        // This will only run if energy is NOT under threshold
+        // This will only run if energy is not under threshold
         if (IsTargetVisible())
         {
             bool isCurrentlyChasing = currentGoal.Contains(new KeyValuePair<string, object>("isAtDestination", true));
 
-            // NOT currently recharging AND NOT currently chasing.
+            // Not currently recharging and not currently chasing.
             if (!isCurrentlyRecharging && !isCurrentlyChasing)
             {
                 Debug.Log("<color=magenta>Player spotted! Interrupting current action to chase.</color>");
@@ -183,17 +187,34 @@ public class GOAPAgent : MonoBehaviour, IGoap
                 fsm.ChangeState(PlanState);
                 return;
             }
-            //Already chasing. Standard path update check.
+            // Already chasing. Path update check.
             else if (isCurrentlyChasing)
             {
-                // The action's Perform() has run at least once, so target is safe to access.
-                if (action.target != null && Vector3.Distance(target.position, action.target.transform.position) > replanThreshold)
+                if (action.target != null)
                 {
-                    Debug.Log("<color=yellow>Player has moved. Replanning chase...</color>");
-                    action.OnPlanAborted();
-                    currentActions.Clear();
-                    fsm.ChangeState(PlanState);
-                    return;
+                    // Check distance
+                    Vector3 currentWaypointAim = action.target.transform.position;
+                    if (Vector3.Distance(target.position, currentWaypointAim) > replanThreshold)
+                    {
+                        // Only update if enough time has passed since the last calculation
+                        if (Time.time >= nextRepathTime)
+                        {
+                            nextRepathTime = Time.time + repathRate;
+
+                            if (action is MoveToAction moveAction)
+                            {
+                                // Debug.Log("Updating chase path");
+                                moveAction.UpdatePath(lastKnownPosition);
+                            }
+                            else
+                            {
+                                action.OnPlanAborted();
+                                currentActions.Clear();
+                                fsm.ChangeState(PlanState);
+                            }
+                        }
+                        return;
+                    }
                 }
             }
         }

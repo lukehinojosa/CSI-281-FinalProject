@@ -1,7 +1,7 @@
 using UnityEngine;
 
 // No MonoBehaviour here! This is a plain C# object.
-public class Node
+public class Node : IHeapItem<Node>
 {
     public int gridX;
     public int gridY;
@@ -16,6 +16,8 @@ public class Node
 
     // Field of View variable
     public bool isVisible;
+    
+    int heapIndex;
 
     public Node(bool _isWalkable, Vector3 _worldPos, int _gridX, int _gridY)
     {
@@ -35,5 +37,22 @@ public class Node
     public int fCost
     {
         get { return gCost + hCost; }
+    }
+    
+    public int HeapIndex
+    {
+        get { return heapIndex; }
+        set { heapIndex = value; }
+    }
+
+    // Reverse CompareTo to make it a Min-Heap, lowest F cost first
+    public int CompareTo(Node nodeToCompare)
+    {
+        int compare = fCost.CompareTo(nodeToCompare.fCost);
+        if (compare == 0)
+        {
+            compare = hCost.CompareTo(nodeToCompare.hCost);
+        }
+        return -compare;
     }
 }

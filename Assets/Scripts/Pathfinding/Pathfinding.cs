@@ -21,7 +21,6 @@ public class Pathfinding : MonoBehaviour
         Node targetNode = grid.NodeFromWorldPoint(targetPos);
         
         // If the agent or target are slightly inside a wall, snap to the nearest valid node.
-        
         if (!startNode.isWalkable)
         {
             startNode = GetClosestWalkableNeighbor(startNode);
@@ -37,33 +36,23 @@ public class Pathfinding : MonoBehaviour
         {
             return null;
         }
+        
+        int maxSize = (int)(grid.gridWorldSize.x / (grid.nodeRadius * 2) * grid.gridWorldSize.y / (grid.nodeRadius * 2));
 
         // A* Algorithm Core
-        List<Node> openSet = new List<Node>();
+        Heap<Node> openSet = new Heap<Node>(maxSize);
         HashSet<Node> closedSet = new HashSet<Node>();
         openSet.Add(startNode);
 
         while (openSet.Count > 0)
         {
-            Node currentNode = openSet[0];
-            // Find the node in the open set with the lowest F cost.
-            for (int i = 1; i < openSet.Count; i++)
-            {
-                if (openSet[i].fCost < currentNode.fCost || 
-                    (openSet[i].fCost == currentNode.fCost && openSet[i].hCost < currentNode.hCost))
-                {
-                    currentNode = openSet[i];
-                }
-            }
-
-            openSet.Remove(currentNode);
+            // O(1) operation to get the best node
+            Node currentNode = openSet.RemoveFirst();
             closedSet.Add(currentNode);
 
             // If the target node has been found, done.
             if (currentNode == targetNode)
             {
-                sw.Stop();
-                print("Path found in: " + sw.ElapsedMilliseconds + " ms");
                 return RetracePath(startNode, targetNode);
             }
 
@@ -85,6 +74,11 @@ public class Pathfinding : MonoBehaviour
                     if (!openSet.Contains(neighbour))
                     {
                         openSet.Add(neighbour);
+                    }
+                    else
+                    {
+                        // Update priority in heap if a shorter path to an existing node is found
+                        openSet.UpdateItem(neighbour);
                     }
                 }
             }
