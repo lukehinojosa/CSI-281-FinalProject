@@ -17,6 +17,10 @@ public class Grid : MonoBehaviour
     private float nodeDiameter;
     private int gridSizeX, gridSizeY;
     
+    public List<Node> debugPath;
+    public Color debugPathColor = Color.green;
+    private LineRenderer lineRenderer;
+    
     public Node[,] GetGridNodes()
     {
         return grid;
@@ -29,6 +33,15 @@ public class Grid : MonoBehaviour
         gridSizeY = Mathf.RoundToInt(gridWorldSize.y / nodeDiameter);
         CreateGrid();
     }
+    
+    void Start()
+    {
+        lineRenderer = GetComponent<LineRenderer>();
+        lineRenderer.positionCount = 0; // Hide by default
+        
+        // Draw line on top of the floor
+        lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+    }
 
     void Update()
     {
@@ -36,6 +49,8 @@ public class Grid : MonoBehaviour
         {
             UpdateGridObstacles();
         }
+        
+        DrawPath();
     }
 
     void CreateGrid()
@@ -50,7 +65,7 @@ public class Grid : MonoBehaviour
                 // Calculate the world point on the XZ plane.
                 Vector3 worldPoint = worldBottomLeft + Vector3.right * (x * nodeDiameter + nodeRadius) + Vector3.forward * (y * nodeDiameter + nodeRadius);
                 
-                // Use a 3D physics check (OverlapSphere) instead of a 2D check.
+                // Physics Check
                 bool walkable = !(Physics.CheckSphere(worldPoint, nodeRadius, unwalkableMask));
                 
                 grid[x, y] = new Node(walkable, worldPoint, x, y);
@@ -66,7 +81,7 @@ public class Grid : MonoBehaviour
         {
             for (int y = 0; y < gridSizeY; y++)
             {
-                // Re-check the walkable status using the 3D physics check.
+                // Recheck the walkable status using the physics check.
                 bool walkable = !(Physics.CheckSphere(grid[x, y].worldPosition, nodeRadius, unwalkableMask));
                 grid[x, y].isWalkable = walkable;
             }
@@ -123,6 +138,31 @@ public class Grid : MonoBehaviour
             }
         }
         return neighbours;
+    }
+    
+    void DrawPath()
+    {
+        if (debugPath != null && debugPath.Count > 0)
+        {
+            lineRenderer.enabled = true;
+            lineRenderer.positionCount = debugPath.Count;
+            
+            // Set Color
+            lineRenderer.startColor = debugPathColor;
+            lineRenderer.endColor = debugPathColor;
+
+            for (int i = 0; i < debugPath.Count; i++)
+            {
+                // Lift the line slightly
+                Vector3 pos = debugPath[i].worldPosition;
+                pos.y += 0.5f; 
+                lineRenderer.SetPosition(i, pos);
+            }
+        }
+        else
+        {
+            lineRenderer.enabled = false;
+        }
     }
 
     void OnDrawGizmos()

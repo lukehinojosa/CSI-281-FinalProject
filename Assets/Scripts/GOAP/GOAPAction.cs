@@ -10,6 +10,11 @@ public abstract class GOAPAction : MonoBehaviour
     private HashSet<KeyValuePair<string, object>> effects;
 
     public bool isDone = false;
+    
+    public virtual List<Node> GetPath()
+    {
+        return null;
+    }
 
     public GOAPAction()
     {

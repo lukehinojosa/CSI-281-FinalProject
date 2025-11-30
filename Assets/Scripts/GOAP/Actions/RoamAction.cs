@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class RoamAction : GOAPAction
 {
@@ -13,6 +14,11 @@ public class RoamAction : GOAPAction
 
     private GOAPAgent goapAgent;
     private Vector3 targetPosition;
+    
+    public override List<Node> GetPath()
+    {
+        return path;
+    }
 
     void Awake()
     {

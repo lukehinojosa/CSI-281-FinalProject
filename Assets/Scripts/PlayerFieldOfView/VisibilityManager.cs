@@ -143,6 +143,8 @@ public class VisibilityManager : MonoBehaviour
         
         HandleInput();
         
+        UpdatePathVisualization();
+        
         // Reset target visibility for this frame to 0 
         System.Array.Clear(textureColors, 0, textureColors.Length);
 
@@ -371,5 +373,41 @@ public class VisibilityManager : MonoBehaviour
                 return enemyRigs[currentEnemyIndex].GetComponent<GOAPAgent>();
         }
         return null;
+    }
+    
+    private void UpdatePathVisualization()
+    {
+        // Clear previous frame's path
+        grid.debugPath = null;
+
+        // Check if spectating an enemy
+        if (currentViewMode == ViewMode.Enemy && enemyRigs.Count > 0 && currentEnemyIndex < enemyRigs.Count)
+        {
+            EntityCameraRig rig = enemyRigs[currentEnemyIndex];
+            if (rig == null) return;
+
+            GOAPAgent agent = rig.GetComponent<GOAPAgent>();
+            if (agent != null && agent.currentActions.Count > 0)
+            {
+                // Get the currently running action
+                GOAPAction currentAction = agent.currentActions.Peek();
+                
+                // Get the path from the action
+                if (currentAction != null)
+                {
+                    grid.debugPath = currentAction.GetPath();
+
+                    // Determine Color based on Action Type
+                    if (currentAction is MoveToAction)
+                        grid.debugPathColor = Color.green; // Player Chase
+                    else if (currentAction is RechargeAction)
+                        grid.debugPathColor = new Color(0.6f, 0f, 1f); // Purple (Recharge)
+                    else if (currentAction is RoamAction)
+                        grid.debugPathColor = new Color(0.6f, 0.4f, 0.2f); // Brown (Roam)
+                    else
+                        grid.debugPathColor = Color.white; // Default
+                }
+            }
+        }
     }
 }

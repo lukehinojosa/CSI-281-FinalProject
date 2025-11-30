@@ -14,6 +14,11 @@ public class RechargeAction : GOAPAction
     
     private int pathIndex = 0;
     private float moveSpeed = 5f;
+    
+    public override List<Node> GetPath()
+    {
+        return cachedPath;
+    }
 
     void Awake()
     {
