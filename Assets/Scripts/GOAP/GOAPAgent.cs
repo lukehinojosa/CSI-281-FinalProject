@@ -11,7 +11,7 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
     public HashSet<GOAPAction> availableActions;
     public Queue<GOAPAction> currentActions;
-    private HashSet<KeyValuePair<string, object>> currentGoal;
+    public HashSet<KeyValuePair<string, object>> currentGoal;
 
     public Vector3 lastKnownPosition;
 
@@ -31,6 +31,9 @@ public class GOAPAgent : MonoBehaviour, IGoap
     private float turnSmoothVelocity;
     [Tooltip("How fast the enemy smooths its rotation.")]
     public float turnSmoothTime = 0.1f; 
+    
+    [Header("Debug")]
+    public string debugStateName = "None"; // For the Visualizer
 
     void Awake()
     {
@@ -66,6 +69,8 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
     private void IdleState(FSM fsm, object data)
     {
+        debugStateName = "IDLE (Scanning)";
+        
         // First Priority: React to seeing the player
         if (IsTargetVisible())
         {
@@ -94,6 +99,8 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
     private void PlanState(FSM fsm, object data)
     {
+        debugStateName = "PLANNING (Calculating)";
+        
         // Create a plan to get to the last known position.
         var worldState = GetWorldState();
         var goal = CreateGoalState();
@@ -117,6 +124,8 @@ public class GOAPAgent : MonoBehaviour, IGoap
 
     private void MoveState(FSM fsm, object data)
     {
+        debugStateName = "MOVING (Executing Plan)";
+        
         if (currentActions.Count == 0)
         {
             ActionsFinished();

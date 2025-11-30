@@ -139,6 +139,8 @@ public class VisibilityManager : MonoBehaviour
 
     void Update()
     {
+        ValidateActiveEntities();
+        
         HandleInput();
         
         // Reset target visibility for this frame to 0 
@@ -153,6 +155,39 @@ public class VisibilityManager : MonoBehaviour
         
         // Debug View
         if (debugImage != null) debugImage.texture = visibilityTexture;
+    }
+    
+    private void ValidateActiveEntities()
+    {
+        // Remove dead enemies from the list
+        int removedCount = enemyRigs.RemoveAll(rig => rig == null);
+
+        // Check if the Player died
+        if (playerRig == null && currentViewMode == ViewMode.Player)
+        {
+            Debug.Log("Player died. Switching to Main View.");
+            currentViewMode = ViewMode.Main;
+            UpdateActiveCamera();
+        }
+
+        // Check if the Enemy being spectated died
+        if (currentViewMode == ViewMode.Enemy)
+        {
+            if (enemyRigs.Count == 0)
+            {
+                // No enemies left at all
+                Debug.Log("All enemies died. Switching to Main View.");
+                currentViewMode = ViewMode.Main;
+                UpdateActiveCamera();
+            }
+            else if (currentEnemyIndex >= enemyRigs.Count)
+            {
+                // The index is now invalid
+                currentEnemyIndex = 0;
+                Debug.Log("Spectated enemy invalid. Switching to first available enemy.");
+                UpdateActiveCamera();
+            }
+        }
     }
 
     private void HandleInput()
@@ -226,6 +261,13 @@ public class VisibilityManager : MonoBehaviour
             case ViewMode.Main: targetCam = mainCamera; break;
             case ViewMode.Player: if (playerRig) targetCam = playerRig.GetCamera(isSecondaryCamera); break;
             case ViewMode.Enemy: if (enemyRigs.Count > 0) targetCam = enemyRigs[currentEnemyIndex].GetCamera(isSecondaryCamera); break;
+        }
+        
+        // Check if the camera is still valid
+        if (targetCam == null && currentViewMode != ViewMode.Main)
+        {
+            currentViewMode = ViewMode.Main;
+            targetCam = mainCamera;
         }
 
         // Activate and Move Quad
@@ -318,5 +360,16 @@ public class VisibilityManager : MonoBehaviour
 
         if (playerRig) SetQueue(playerRig);
         foreach (var rig in enemyRigs) SetQueue(rig);
+    }
+    
+    // Visualizer API
+    public GOAPAgent GetSpectatedEnemyAgent()
+    {
+        if (currentViewMode == ViewMode.Enemy && enemyRigs.Count > 0 && currentEnemyIndex < enemyRigs.Count)
+        {
+            if (enemyRigs[currentEnemyIndex] != null)
+                return enemyRigs[currentEnemyIndex].GetComponent<GOAPAgent>();
+        }
+        return null;
     }
 }

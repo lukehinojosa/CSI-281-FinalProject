@@ -108,10 +108,11 @@ MonoBehaviour:
   lastKnownPosition: {x: 0, y: 0, z: 0}
   currentEnergy: 100
   maxEnergy: 100
-  lowEnergyThreshold: 75
+  lowEnergyThreshold: 50
   energyDepletionRate: 2
   energyStations: []
   turnSmoothTime: 0.1
+  debugStateName: None
 --- !u!114 &8277159289893894369
 MonoBehaviour:
   m_ObjectHideFlags: 0

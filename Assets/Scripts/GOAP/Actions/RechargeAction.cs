@@ -1,21 +1,24 @@
 using UnityEngine;
 using System.Linq;
+using System.Collections.Generic;
 
 public class RechargeAction : GOAPAction
 {
     private Pathfinding pathfinder;
     private Grid grid;
-    private System.Collections.Generic.List<Node> path;
-    private int pathIndex = 0;
-    private float moveSpeed = 5f;
     private GOAPAgent goapAgent;
 
+    // Cache the successful path and target found during the check
+    private List<Node> cachedPath;
     private Vector3 targetPosition;
+    
+    private int pathIndex = 0;
+    private float moveSpeed = 5f;
 
     void Awake()
     {
         pathfinder = FindObjectOfType<Pathfinding>();
-        grid = FindObjectOfType<Grid>();
+        grid = FindObjectOfType<Grid>(); 
         goapAgent = GetComponent<GOAPAgent>();
 
         // This action is only possible if the agent is low on energy.
@@ -26,10 +29,10 @@ public class RechargeAction : GOAPAction
 
     public override void Reset()
     {
-        path = null;
         pathIndex = 0;
         target = null;
         targetPosition = Vector3.zero;
+        cachedPath = null;
         isDone = false;
     }
 
@@ -45,37 +48,55 @@ public class RechargeAction : GOAPAction
         if (goapAgent.energyStations == null || goapAgent.energyStations.Length == 0)
             return false;
 
-        // Sort stations by distance
+        // Sort stations by distance to find the best candidate first
         var sortedStations = goapAgent.energyStations
             .OrderBy(station => Vector3.Distance(station.transform.position, agent.transform.position));
 
+        // Iterate through stations until a reachable one is found
         foreach (var station in sortedStations)
         {
-            // Get the node closest to the station
             Node stationNode = grid.NodeFromWorldPoint(station.transform.position);
-            
-            // Check for a walkable station
+            Vector3 potentialTarget = Vector3.zero;
+            bool foundValidNode = false;
+
+            // Check if the station's node is valid
             if (stationNode.isWalkable)
             {
-                targetPosition = station.transform.position;
-                return true;
+                potentialTarget = station.transform.position;
+                foundValidNode = true;
             }
-            
-            // Check for a walkable neighbor of the nearest station
-            Node validNeighbor = GetWalkableNeighbor(stationNode);
-            if (validNeighbor != null)
+            // If not, check if it has a valid neighbor
+            else
             {
-                targetPosition = validNeighbor.worldPosition;
-                return true;
+                Node validNeighbor = GetWalkableNeighbor(stationNode);
+                if (validNeighbor != null)
+                {
+                    potentialTarget = validNeighbor.worldPosition;
+                    foundValidNode = true;
+                }
             }
-            
-            // If completely unreachable, go to the next closest station
+
+            // If valid endpoint found, verify a path exists
+            if (foundValidNode)
+            {
+                // Run A* now. If it returns a path, this station walkable
+                List<Node> testPath = pathfinder.FindPath(agent.transform.position, potentialTarget);
+                
+                if (testPath != null && testPath.Count > 0)
+                {
+                    // Success, cache the data so Perform doesn't need to recalculate.
+                    cachedPath = testPath;
+                    targetPosition = potentialTarget;
+                    return true; 
+                }
+                // If path is null, this station is walled off. Loop to the next station.
+            }
         }
 
-        // No reachable stations found
+        // No reachable stations found, action fails
         return false;
     }
-    
+
     private Node GetWalkableNeighbor(Node node)
     {
         foreach (Node neighbor in grid.GetNeighbours(node))
@@ -87,22 +108,23 @@ public class RechargeAction : GOAPAction
 
     public override bool Perform(GameObject agent)
     {
-        // Create the target GameObject only on the first run of Perform.
         if (target == null)
         {
             target = new GameObject("DynamicRechargeTarget");
             target.transform.position = targetPosition;
         }
 
-        if (path == null)
+        // Use the path already calculated in CheckProceduralPrecondition
+        if (cachedPath == null)
         {
-            path = pathfinder.FindPath(agent.transform.position, target.transform.position);
-            if (path == null) return false;
+            // Fallback
+            cachedPath = pathfinder.FindPath(agent.transform.position, target.transform.position);
+            if (cachedPath == null) return false;
         }
 
-        if (pathIndex < path.Count)
+        if (pathIndex < cachedPath.Count)
         {
-            Vector3 worldTargetPos = path[pathIndex].worldPosition;
+            Vector3 worldTargetPos = cachedPath[pathIndex].worldPosition;
             goapAgent.MoveTowards(worldTargetPos, moveSpeed);
 
             if (Vector3.Distance(agent.transform.position, worldTargetPos) < 0.1f)
@@ -112,13 +134,12 @@ public class RechargeAction : GOAPAction
         }
         else
         {
-            // Arrived at the station.
             goapAgent.ReplenishEnergy();
             isDone = true;
             if (target != null) Destroy(target);
             return true;
         }
 
-        return true; // Still in progress.
+        return true; 
     }
 }
