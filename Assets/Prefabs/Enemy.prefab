@@ -108,7 +108,7 @@ MonoBehaviour:
   lastKnownPosition: {x: 0, y: 0, z: 0}
   currentEnergy: 100
   maxEnergy: 100
-  lowEnergyThreshold: 50
+  lowEnergyThreshold: 65
   energyDepletionRate: 2
   energyStations: []
   turnSmoothTime: 0.1
@@ -309,8 +309,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mode: 0
   target: {fileID: 8273085452976170520}
-  height: 2.5
-  distance: 2.5
+  distance: 3
+  fixedPitch: 20
+  pivotOffset: 1
   topDownOffset: {x: 0, y: 20, z: -10}
   rotationDamping: 2
   positionDamping: 10
@@ -439,8 +440,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mode: 1
   target: {fileID: 8273085452976170520}
-  height: 2.5
   distance: 3.5
+  fixedPitch: 20
+  pivotOffset: 1.5
   topDownOffset: {x: 0, y: 10, z: 0}
   rotationDamping: 5
   positionDamping: 10

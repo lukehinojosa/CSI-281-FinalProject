@@ -8,14 +8,18 @@ public class SmartCameraFollow : MonoBehaviour
     [Tooltip("ThirdPerson = Rotates behind target. TopDown = Fixed rotation.")]
     public CameraMode mode = CameraMode.ThirdPerson;
 
-    [Header("Target Settings")]
+    [Header("Target")]
     public Transform target;
-    
-    // Used for Third Person
-    public float height = 2.5f;
-    public float distance = 3.5f;
 
-    // Used for Top Down
+    [Header("Third Person Settings")]
+    [Tooltip("How far back the camera sits.")]
+    public float distance = 3.5f;
+    [Tooltip("The fixed vertical angle (pitch) of the camera.")]
+    public float fixedPitch = 20f;
+    [Tooltip("Height offset from the target's feet (e.g., 1.5 for chest height).")]
+    public float pivotOffset = 1.5f;
+
+    [Header("Top Down Settings")]
     public Vector3 topDownOffset = new Vector3(0, 20, -10);
 
     [Header("Follow Settings")]
@@ -48,8 +52,8 @@ public class SmartCameraFollow : MonoBehaviour
         }
         else
         {
-            // For Top Down, we snap immediately to the offset
-            transform.rotation = Quaternion.Euler(60, 0, 0); // Standard Top-Down angle
+            // For Top Down, snap immediately to the offset
+            transform.rotation = Quaternion.Euler(60, 0, 0);
         }
         
         SnapCamera();
@@ -94,41 +98,40 @@ public class SmartCameraFollow : MonoBehaviour
         
         // Smoothly move there
         transform.position = Vector3.Lerp(transform.position, desiredPos, positionDamping * dt);
-        
         transform.rotation = Quaternion.Euler(90, 0, 0); 
     }
 
-    // Perspective Camera
     void FollowThirdPerson(float dt)
     {
-        // 1. Calculate Rotation (Follow Target's Y)
+        // Calculate Yaw
         float wantedRotationAngle = target.eulerAngles.y;
         currentRotationAngleY = Mathf.LerpAngle(currentRotationAngleY, wantedRotationAngle, rotationDamping * dt);
-        Quaternion currentRotation = Quaternion.Euler(0, currentRotationAngleY, 0);
+        
+        // Create the Fixed Rotation
+        Quaternion finalRotation = Quaternion.Euler(fixedPitch, currentRotationAngleY, 0);
 
-        // 2. Calculate Position
-        Vector3 desiredPos = target.position;
-        desiredPos -= currentRotation * Vector3.forward * distance;
-        desiredPos += Vector3.up * height;
+        // Determine what the camera is looking at
+        Vector3 pivotPos = target.position + Vector3.up * pivotOffset;
 
-        // 3. Collision Logic
-        Vector3 rayOrigin = target.position + Vector3.up * (height * 0.5f);
-        Vector3 rayDir = desiredPos - rayOrigin;
+        // Calculate Direction
+        Vector3 direction = finalRotation * -Vector3.forward;
+
+        // Collision Logic
         float targetDist = distance; 
-
-        if (Physics.Raycast(rayOrigin, rayDir.normalized, out RaycastHit hit, distance, obstacleMask))
+        
+        // Raycast from Pivot backwards along the camera direction
+        if (Physics.Raycast(pivotPos, direction, out RaycastHit hit, distance, obstacleMask))
         {
-            float hitDistance = Vector3.Distance(rayOrigin, hit.point);
-            targetDist = Mathf.Clamp(hitDistance - wallBuffer, 0.5f, distance);
+            targetDist = Mathf.Clamp(hit.distance - wallBuffer, 0.1f, distance);
         }
 
+        // Smooth zoom
         currentDistance = Mathf.Lerp(currentDistance, targetDist, zoomSpeed * dt);
 
-        Vector3 finalPos = target.position;
-        finalPos -= currentRotation * Vector3.forward * currentDistance;
-        finalPos += Vector3.up * height;
+        // Apply Final Position & Rotation
+        Vector3 finalPos = pivotPos + (direction * currentDistance);
 
-        transform.position = Vector3.Lerp(transform.position, finalPos, positionDamping * dt);
-        transform.LookAt(target.position + Vector3.up * (height * 0.5f));
+        transform.position = finalPos;
+        transform.rotation = finalRotation;
     }
 }

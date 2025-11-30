@@ -280,8 +280,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mode: 1
   target: {fileID: 4951911837077811225}
-  height: 2.5
   distance: 3.5
+  fixedPitch: 20
+  pivotOffset: 1.5
   topDownOffset: {x: 0, y: 10, z: 0}
   rotationDamping: 5
   positionDamping: 10
@@ -410,8 +411,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mode: 0
   target: {fileID: 4951911837077811225}
-  height: 2.5
-  distance: 2.5
+  distance: 3
+  fixedPitch: 20
+  pivotOffset: 1
   topDownOffset: {x: 0, y: 20, z: -10}
   rotationDamping: 10
   positionDamping: 10
