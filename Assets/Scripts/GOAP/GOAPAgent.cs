@@ -34,6 +34,10 @@ public class GOAPAgent : MonoBehaviour, IGoap
     
     [Header("Debug")]
     public string debugStateName = "None"; // For the Visualizer
+    
+    private Renderer agentRenderer;
+    private Color colorPursue = Color.red;
+    private Color colorRecharge = new Color(0.6f, 0f, 1f);
 
     void Awake()
     {
@@ -47,6 +51,8 @@ public class GOAPAgent : MonoBehaviour, IGoap
         {
             availableActions.Add(action);
         }
+        
+        agentRenderer = GetComponentInChildren<Renderer>();
 
         stateMachine = new FSM();
         stateMachine.PushState(IdleState); // Start in the Idle state
@@ -65,6 +71,8 @@ public class GOAPAgent : MonoBehaviour, IGoap
         }
         
         stateMachine.Update(gameObject);
+        
+        UpdateColor();
     }
 
     private void IdleState(FSM fsm, object data)
@@ -290,12 +298,12 @@ public class GOAPAgent : MonoBehaviour, IGoap
     
     public void MoveTowards(Vector3 targetPosition, float speed)
     {
-        // 1. Calculate Direction
+        // Calculate Direction
         Vector3 direction = (targetPosition - transform.position).normalized;
-        // Flatten Y to ensure it only rotates on the Y axis
+        // Flatten Y so it only rotates on the Y axis
         direction.y = 0;
 
-        // 2. Rotation
+        // Rotation
         if (direction != Vector3.zero && direction.sqrMagnitude > 0.001f)
         {
             float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
@@ -303,7 +311,32 @@ public class GOAPAgent : MonoBehaviour, IGoap
             transform.rotation = Quaternion.Euler(0f, angle, 0f);
         }
 
-        // 3. Update Position
+        // Update Position
         transform.position = Vector3.MoveTowards(transform.position, targetPosition, speed * Time.deltaTime);
+    }
+    
+    private void UpdateColor()
+    {
+        if (agentRenderer == null) return;
+
+        Color targetColor = colorPursue; // Default to Red (Idle/Roam/Chase)
+
+        // Check if currently performing an action
+        if (currentActions != null && currentActions.Count > 0)
+        {
+            GOAPAction currentAction = currentActions.Peek();
+            
+            // If the current action is Recharge, switch to Purple
+            if (currentAction is RechargeAction)
+            {
+                targetColor = colorRecharge;
+            }
+        }
+
+        // Apply the color
+        if (agentRenderer.material.color != targetColor)
+        {
+            agentRenderer.material.color = targetColor;
+        }
     }
 }
