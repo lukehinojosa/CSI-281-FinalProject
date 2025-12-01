@@ -31,7 +31,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // 1. Inputs
+        // Inputs
         float h = 0;
         float v = 0;
         if (Input.GetKey(KeyCode.W)) v += 1;
@@ -39,7 +39,7 @@ public class PlayerController : MonoBehaviour
         if (Input.GetKey(KeyCode.D)) h += 1;
         if (Input.GetKey(KeyCode.A)) h -= 1;
         
-        // 2. Gravity Logic
+        // Gravity Logic
         if (controller.isGrounded && verticalVelocity < 0)
         {
             verticalVelocity = -2f;
@@ -82,7 +82,7 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // 3. Apply Final Move + Gravity
+        // Apply Move + Gravity
         finalMove.y = verticalVelocity;
         controller.Move(finalMove * Time.deltaTime);
     }

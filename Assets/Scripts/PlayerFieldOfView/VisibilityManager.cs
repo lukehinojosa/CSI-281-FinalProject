@@ -19,7 +19,7 @@ public class VisibilityManager : MonoBehaviour
     public Transform enemyFogQuad;
 
     [Header("Debug")]
-    public RawImage debugImage; // Note: Standard RawImage shaders cannot display Texture Arrays directly.
+    public RawImage debugImage;
 
     [Header("Quality Settings")]
     [Tooltip("Multiplier for FOV Resolution. 1 = Grid Size, 4+ = High Res Shadows.")]
