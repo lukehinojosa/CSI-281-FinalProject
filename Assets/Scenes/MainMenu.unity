@@ -275,7 +275,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -187, y: -30}
+  m_AnchoredPosition: {x: -60, y: -30}
   m_SizeDelta: {x: 994, y: 490.1}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &440956979
@@ -333,7 +333,7 @@ MonoBehaviour:
     : Cycle Fog Modes (When viewing Main Camera)
 
 
-    <b>escape</b> : Main Menu
+    <b>Backspace</b> : Main Menu
 
     <b>r</b>
     : Restart level when on result screen'
@@ -1120,7 +1120,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 450, y: -25}
+  m_AnchoredPosition: {x: 390, y: -25}
   m_SizeDelta: {x: 282.7271, y: 100.1297}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1068985904
@@ -1560,7 +1560,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 600, y: 0}
+  m_AnchoredPosition: {x: 450, y: 0}
   m_SizeDelta: {x: 150, y: 75}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1430379533
@@ -1960,7 +1960,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -450, y: -25}
+  m_AnchoredPosition: {x: -390, y: -25}
   m_SizeDelta: {x: 282.7271, y: 100.1297}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1670881215

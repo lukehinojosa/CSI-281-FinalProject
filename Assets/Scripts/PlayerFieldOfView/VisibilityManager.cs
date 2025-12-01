@@ -419,6 +419,9 @@ public class VisibilityManager : MonoBehaviour
                 playerEntity.primaryCamera.rect = new Rect(0, 0, 0.5f, 1);
                 playerEntity.primaryCamera.gameObject.SetActive(true);
                 ConfigureCameraForLayer(playerEntity.primaryCamera, 0, true);
+                
+                // Set player camera size in multiplayer
+                playerEntity.primaryCamera.orthographicSize = 18f;
             }
         }
         else
@@ -444,6 +447,9 @@ public class VisibilityManager : MonoBehaviour
             c.rect = new Rect(0.5f, 0, 0.5f, 1);
             c.gameObject.SetActive(true);
             ConfigureCameraForLayer(c, 1, false);
+            
+            // Set enemy camera sizes in multiplayer
+            mpEnemyRig.primaryCamera.orthographicSize = 23f;
         }
     }
 
