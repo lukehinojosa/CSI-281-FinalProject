@@ -1,25 +1,45 @@
 using UnityEngine;
 
-[ExecuteInEditMode] // Allows the script to run in the editor
+[ExecuteInEditMode]
 public class FitQuadToCamera : MonoBehaviour
 {
-    void Update()
-    {
-        Camera cam = transform.parent.GetComponent<Camera>();
-        if (cam == null) return;
+    public Camera targetCamera;
+    public float distance = 0.41f;
 
-        float distance = transform.localPosition.z;
+    void OnEnable()
+    {
+        // Subscribe to the render loop
+        Camera.onPreCull += SnapToCamera;
+    }
+
+    void OnDisable()
+    {
+        // Clean up to prevent memory leaks
+        Camera.onPreCull -= SnapToCamera;
+    }
+
+    // This runs immediately before any camera renders a frame.
+    void SnapToCamera(Camera cam)
+    {
+        // Only run if the camera rendering the target camera
+        if (targetCamera == null || cam != targetCamera) return;
+
+        // Follow Position & Rotation
+        transform.position = targetCamera.transform.position + targetCamera.transform.forward * distance;
+        transform.rotation = targetCamera.transform.rotation;
+
+        // Scale to fit Frustum/Ortho Size
         float height, width;
 
-        if (cam.orthographic)
+        if (targetCamera.orthographic)
         {
-            height = cam.orthographicSize * 2.0f;
-            width = height * cam.aspect;
+            height = targetCamera.orthographicSize * 2.0f;
+            width = height * targetCamera.aspect;
         }
-        else // Perspective
+        else
         {
-            height = 2.0f * distance * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            width = height * cam.aspect;
+            height = 2.0f * distance * Mathf.Tan(targetCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            width = height * targetCamera.aspect;
         }
 
         transform.localScale = new Vector3(width, height, 1);

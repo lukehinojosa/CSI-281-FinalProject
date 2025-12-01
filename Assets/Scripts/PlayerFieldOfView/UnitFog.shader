@@ -19,6 +19,7 @@ Shader "Unlit/UnitFog"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma require 2darray
             #include "UnityCG.cginc"
 
             struct appdata
@@ -38,9 +39,14 @@ Shader "Unlit/UnitFog"
             float4 _MainTex_ST;
             fixed4 _Color;
 
-            sampler2D _VisibilityTex;
+            // A Texture2DArray to look up
+            UNITY_DECLARE_TEX2DARRAY(_VisibilityTexArray);
+            
             float4 _GridWorldSize;
             float4 _GridBottomLeft;
+            
+            // This float determines which layer (Player=0, Enemy=1) this camera sees
+            float _FowIndex; 
 
             v2f vert (appdata v)
             {
@@ -56,17 +62,17 @@ Shader "Unlit/UnitFog"
                 fixed4 col = tex2D(_MainTex, i.uv) * _Color;
 
                 // Calculate UV
-                float2 visibilityUV;
-                visibilityUV.x = (i.worldPos.x - _GridBottomLeft.x) / _GridWorldSize.x;
-                visibilityUV.y = (i.worldPos.z - _GridBottomLeft.y) / _GridWorldSize.y;
+                float2 uv;
+                uv.x = (i.worldPos.x - _GridBottomLeft.x) / _GridWorldSize.x;
+                uv.y = (i.worldPos.z - _GridBottomLeft.y) / _GridWorldSize.y;
 
-                float visibility = tex2D(_VisibilityTex, visibilityUV).a;
+                // Sample the specific Slice of the Array
+                float visibility = UNITY_SAMPLE_TEX2DARRAY(_VisibilityTexArray, float3(uv, _FowIndex)).a;
 
-                // Apply Visibility to Alpha
-                col.a *= visibility; 
-
-                // Darken the color to blend with the black fog
-                col.rgb *= visibility; 
+                // Apply
+                col.a *= visibility;
+                
+                col.rgb *= visibility;
 
                 return col;
             }

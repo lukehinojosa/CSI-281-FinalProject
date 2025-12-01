@@ -13,13 +13,19 @@ Shader "Unlit/VisibilityScreen"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma require 2darray // Required for Texture Arrays
             #include "UnityCG.cginc"
 
-            sampler2D _VisibilityTex;
-            sampler2D _CameraDepthTexture; // Used for Perspective
+            // Updated to use Texture Array instead of single texture
+            UNITY_DECLARE_TEX2DARRAY(_VisibilityTexArray);
+            
+            sampler2D _CameraDepthTexture; // Used for Perspective Depth reconstruction
             
             float4 _GridWorldSize;
             float4 _GridBottomLeft;
+            
+            // 0 = Player Layer, 1 = Enemy Layer
+            float _FowIndex; 
 
             struct appdata
             {
@@ -102,8 +108,8 @@ Shader "Unlit/VisibilityScreen"
                 visibilityUV.x = (worldPosToSample.x - _GridBottomLeft.x) / _GridWorldSize.x;
                 visibilityUV.y = (worldPosToSample.z - _GridBottomLeft.y) / _GridWorldSize.y;
                 
-                // Sample texture
-                float visibility = tex2D(_VisibilityTex, visibilityUV).a;
+                // Sample texture array at the index
+                float visibility = UNITY_SAMPLE_TEX2DARRAY(_VisibilityTexArray, float3(visibilityUV, _FowIndex)).a;
 
                 // Return black with alpha based on visibility
                 return fixed4(0, 0, 0, 1.0 - visibility);

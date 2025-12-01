@@ -42,6 +42,9 @@ public class GOAPAgent : MonoBehaviour, IGoap
     [Header("Performance")]
     public float repathRate = 0.25f; // Calculate path 4 times per second
     private float nextRepathTime = 0;
+    
+    [HideInInspector]
+    public bool isManualControl = false;
 
     void Awake()
     {
@@ -74,7 +77,10 @@ public class GOAPAgent : MonoBehaviour, IGoap
             return;
         }
         
-        stateMachine.Update(gameObject);
+        if (!isManualControl)
+        {
+            stateMachine.Update(gameObject);
+        }
         
         UpdateColor();
     }
@@ -91,7 +97,7 @@ public class GOAPAgent : MonoBehaviour, IGoap
             fsm.ChangeState(PlanState);
         }
         // Second Priority: React to low energy
-        else if (currentEnergy < lowEnergyThreshold)
+        else if (currentEnergy < lowEnergyThreshold && HasRechargeStations())
         {
             // Even if the player isn't seen, create survival plan
             fsm.ChangeState(PlanState);
@@ -162,7 +168,7 @@ public class GOAPAgent : MonoBehaviour, IGoap
         bool isLowOnEnergy = currentEnergy < lowEnergyThreshold;
         bool isCurrentlyRecharging = currentGoal.Contains(new KeyValuePair<string, object>("isLowOnEnergy", false));
         
-        if (isLowOnEnergy && !isCurrentlyRecharging)
+        if (isLowOnEnergy && !isCurrentlyRecharging && HasRechargeStations())
         {
             Debug.Log("<color=red>ENERGY CRITICAL! Interrupting current action to find a station.</color>");
             action.OnPlanAborted();
@@ -245,7 +251,7 @@ public class GOAPAgent : MonoBehaviour, IGoap
     {
         HashSet<KeyValuePair<string, object>> goal = new HashSet<KeyValuePair<string, object>>();
 
-        if (currentEnergy < lowEnergyThreshold)
+        if (currentEnergy < lowEnergyThreshold && HasRechargeStations())
         {
             // Priority 1: Survive
             // The goal is to no longer be in a low energy state.
@@ -339,9 +345,13 @@ public class GOAPAgent : MonoBehaviour, IGoap
         if (agentRenderer == null) return;
 
         Color targetColor = colorPursue; // Default to Red (Idle/Roam/Chase)
-
+        
+        if (isManualControl)
+        {
+            targetColor = colorPursue;
+        }
         // Check if currently performing an action
-        if (currentActions != null && currentActions.Count > 0)
+        else if (currentActions != null && currentActions.Count > 0)
         {
             GOAPAction currentAction = currentActions.Peek();
             
@@ -357,5 +367,15 @@ public class GOAPAgent : MonoBehaviour, IGoap
         {
             agentRenderer.material.color = targetColor;
         }
+    }
+    
+    private bool HasRechargeStations()
+    {
+        if (energyStations == null) return false;
+        foreach (var station in energyStations)
+        {
+            if (station != null) return true;
+        }
+        return false;
     }
 }

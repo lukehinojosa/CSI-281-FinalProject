@@ -16,8 +16,8 @@ TagManager:
   - Unwalkable
   - EnergyStation
   - Entity
-  - 
-  - 
+  - PlayerFog
+  - EnemyFog
   - 
   - 
   - 

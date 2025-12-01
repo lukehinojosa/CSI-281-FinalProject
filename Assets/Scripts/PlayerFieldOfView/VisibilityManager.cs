@@ -4,68 +4,74 @@ using System.Collections.Generic;
 
 public class VisibilityManager : MonoBehaviour
 {
-    public enum ViewMode { Main, Player, Enemy }
+    // Mode Enums
+    public enum ViewMode { SinglePlayerDirector, MultiplayerSplitScreen }
     public enum MainFowType { Combined, PlayerOnly, EnemiesOnly }
 
     [Header("Global Setup")]
     public Camera mainCamera;
     public Grid grid;
-    [Tooltip("The Quad object used for the visibility screen.")]
-    public Transform visibilityQuad; 
-    public RawImage debugImage;
+    
+    [Header("Dual Quad Setup")]
+    [Tooltip("Quad on layer 'PlayerFog'. Used for SP and P1 in MP.")]
+    public Transform playerFogQuad; 
+    [Tooltip("Quad on layer 'EnemyFog'. Used for P2 in MP.")]
+    public Transform enemyFogQuad;
+
+    [Header("Debug")]
+    public RawImage debugImage; // Note: Standard RawImage shaders cannot display Texture Arrays directly.
 
     [Header("Quality Settings")]
     [Tooltip("Multiplier for FOV Resolution. 1 = Grid Size, 4+ = High Res Shadows.")]
     [Range(1, 10)]
     public int resolutionScale = 4;
-    
-    private EntityCameraRig playerRig;
-    private List<EntityCameraRig> enemyRigs = new List<EntityCameraRig>();
 
-    private ViewMode currentViewMode = ViewMode.Main;
-    private MainFowType mainFowState = MainFowType.Combined;
+    // State
+    public ViewMode currentMode = ViewMode.SinglePlayerDirector;
     
-    private int currentEnemyIndex = 0;
-    private bool isSecondaryCamera = false;
+    // Singleplayer State
+    private int currentSpectatorIndex = 0; // 0 = Main, 1 = Player, 2+ = Enemies
+    private MainFowType spFowType = MainFowType.Combined;
+    private bool spSecondaryCam = false;
 
-    // Rendering Data
-    private Texture2D visibilityTexture;
-    private Color32[] textureColors;
+    // Multiplayer State
+    private EntityCameraRig mpPlayerRig;
+    private EntityCameraRig mpEnemyRig; 
+
+    // Render Pipeline
+    private Texture2DArray visibilityArray; 
     
-    // The High-Resolution Map of obstacles
-    private bool[] highResWallMap; 
+    private Color32[] colorsPlayer;
+    private Color32[] colorsEnemy;
+    private bool[] highResWallMap;
     
-    // Texture Dimensions
     private int texWidth;
     private int texHeight;
     private int coarseGridX;
     private int coarseGridY;
+    
+    // Cached Materials to set indices
+    private Material matPlayer;
+    private Material matEnemy;
+
+    // Entity Tracking
+    private EntityCameraRig playerEntity;
+    private List<EntityCameraRig> enemyEntities = new List<EntityCameraRig>();
 
     void Start()
     {
-        if (grid == null || visibilityQuad == null || mainCamera == null)
+        if (grid == null || playerFogQuad == null || enemyFogQuad == null || mainCamera == null)
         {
-            Debug.LogError("Grid, Visibility Quad, or Main Camera not assigned in VisibilityManager!");
+            Debug.LogError("Grid, PlayerFogQuad, EnemyFogQuad, or Main Camera not assigned in VisibilityManager!");
             enabled = false;
             return;
         }
+        
+        // Detach quads from parents
+        playerFogQuad.SetParent(null);
+        enemyFogQuad.SetParent(null);
 
-        // Dynamic Discovery
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-        if (playerObj != null) playerRig = playerObj.GetComponent<EntityCameraRig>();
-
-        GameObject[] enemyObjs = GameObject.FindGameObjectsWithTag("Enemy");
-        foreach (var obj in enemyObjs)
-        {
-            var rig = obj.GetComponent<EntityCameraRig>();
-            if (rig != null) enemyRigs.Add(rig);
-        }
-
-        if (playerRig == null && enemyRigs.Count == 0)
-        {
-            Debug.LogError("No Player or Enemies found! Ensure Tags are set correctly.");
-            return;
-        }
+        RefreshEntityList();
 
         // High Res Texture Setup
         // Calculate coarse grid dimensions (AI Grid)
@@ -78,61 +84,76 @@ public class VisibilityManager : MonoBehaviour
 
         Debug.Log($"Initializing FOW. Logic: {coarseGridX}x{coarseGridY}. Visual: {texWidth}x{texHeight}");
 
-        // Initialize Arrays
-        visibilityTexture = new Texture2D(texWidth, texHeight, TextureFormat.Alpha8, false);
-        visibilityTexture.wrapMode = TextureWrapMode.Clamp;
-        visibilityTexture.filterMode = FilterMode.Bilinear;
+        // Initialize Texture Array
+        // Slice 0 = Player, Slice 1 = Enemy
+        visibilityArray = new Texture2DArray(texWidth, texHeight, 2, TextureFormat.Alpha8, false);
+        visibilityArray.wrapMode = TextureWrapMode.Clamp;
+        visibilityArray.filterMode = FilterMode.Bilinear;
         
-        textureColors = new Color32[texWidth * texHeight];
+        // Initialize Color Buffers
+        colorsPlayer = new Color32[texWidth * texHeight];
+        colorsEnemy = new Color32[texWidth * texHeight];
         highResWallMap = new bool[texWidth * texHeight];
 
         // Build the high-res wall map using Physics
         BuildHighResWallMap();
+        
+        // Setup Materials
+        if (playerFogQuad.GetComponent<Renderer>()) matPlayer = playerFogQuad.GetComponent<Renderer>().material;
+        if (enemyFogQuad.GetComponent<Renderer>()) matEnemy = enemyFogQuad.GetComponent<Renderer>().material;
+
+        // Set indices for the quads so they know which slice to look at
+        if (matPlayer) matPlayer.SetFloat("_FowIndex", 0); // Player Quad looks at Slice 0
+        if (matEnemy) matEnemy.SetFloat("_FowIndex", 1);  // Enemy Quad looks at Slice 1
 
         // Shader Global Variables
         Vector3 bottomLeft = grid.transform.position - Vector3.right * grid.gridWorldSize.x / 2 - Vector3.forward * grid.gridWorldSize.y / 2;
         Shader.SetGlobalVector("_GridBottomLeft", new Vector4(bottomLeft.x, bottomLeft.z, 0, 0));
         Shader.SetGlobalVector("_GridWorldSize", new Vector4(grid.gridWorldSize.x, grid.gridWorldSize.y, 0, 0));
-        Shader.SetGlobalTexture("_VisibilityTex", visibilityTexture);
+        
+        // Bind the Array Globally
+        Shader.SetGlobalTexture("_VisibilityTexArray", visibilityArray);
         
         ResetEntityRendering();
-
+        
         // Initialize Camera
-        UpdateActiveCamera();
+        if (currentMode == ViewMode.MultiplayerSplitScreen)
+        {
+            // GameManager ran first. Do nothing.
+        }
+        else if (GameSettings.CurrentMode == GameMode.Multiplayer)
+        {
+            SetMultiplayerMode(true);
+        }
+        else
+        {
+            if (GameSettings.CurrentMode == GameMode.SinglePlayer)
+            {
+                // Force start on Player
+                currentSpectatorIndex = 1;
+                // Force Primary Camera (Bird's Eye)
+                spSecondaryCam = false; 
+            }
+            else
+            {
+                // Demo Mode starts on Main Camera (Index 0)
+                currentSpectatorIndex = 0;
+            }
+            
+            UpdateSPCamera(); 
+        }
     }
 
     void BuildHighResWallMap()
     {
-        // Calculate the physical size of a single high-res pixel in world space
-        float worldNodeSize = grid.nodeRadius * 2;
-        float pixelWorldSize = worldNodeSize / resolutionScale;
-        float pixelRadius = pixelWorldSize * 0.45f; // Slightly smaller than half to avoid edge overlaps
+        float pixelSize = (grid.nodeRadius * 2) / resolutionScale;
+        float pixelRadius = pixelSize * 0.45f;
+        Vector3 bl = grid.transform.position - Vector3.right * grid.gridWorldSize.x / 2 - Vector3.forward * grid.gridWorldSize.y / 2;
 
-        // Get the bottom-left corner of the grid
-        Vector3 gridBottomLeft = grid.transform.position 
-                                 - Vector3.right * grid.gridWorldSize.x / 2 
-                                 - Vector3.forward * grid.gridWorldSize.y / 2;
-
-        for (int y = 0; y < texHeight; y++)
-        {
-            for (int x = 0; x < texWidth; x++)
-            {
-                // Calculate the precise World Position of this specific pixel
-                float worldX = (x * pixelWorldSize) + (pixelWorldSize * 0.5f);
-                float worldZ = (y * pixelWorldSize) + (pixelWorldSize * 0.5f);
-                
-                Vector3 pixelWorldPos = gridBottomLeft + Vector3.right * worldX + Vector3.forward * worldZ;
-
-                // Perform a physics check at this specific pixel location
-                // This creates high-fidelity wall definitions independent of the coarse grid
-                if (Physics.CheckSphere(pixelWorldPos, pixelRadius, grid.unwalkableMask))
-                {
-                    highResWallMap[x + y * texWidth] = true;
-                }
-                else
-                {
-                    highResWallMap[x + y * texWidth] = false;
-                }
+        for (int y = 0; y < texHeight; y++) {
+            for (int x = 0; x < texWidth; x++) {
+                Vector3 pos = bl + Vector3.right * (x * pixelSize + pixelSize/2) + Vector3.forward * (y * pixelSize + pixelSize/2);
+                highResWallMap[x + y * texWidth] = Physics.CheckSphere(pos, pixelRadius, grid.unwalkableMask);
             }
         }
     }
@@ -140,273 +161,363 @@ public class VisibilityManager : MonoBehaviour
     void Update()
     {
         ValidateActiveEntities();
-        
-        HandleInput();
-        
+
+        if (currentMode == ViewMode.SinglePlayerDirector) HandleSPInput();
+
         UpdatePathVisualization();
         
-        // Reset target visibility for this frame to 0 
-        System.Array.Clear(textureColors, 0, textureColors.Length);
+        System.Array.Clear(colorsPlayer, 0, colorsPlayer.Length);
+        System.Array.Clear(colorsEnemy, 0, colorsEnemy.Length);
 
-        // Compute visibility on the high-res grid
-        ComputeHighResVisibility();
+        if (currentMode == ViewMode.MultiplayerSplitScreen)
+        {
+            if(mpPlayerRig) RunShadowCaster(mpPlayerRig, colorsPlayer);
+            if(mpEnemyRig) RunShadowCaster(mpEnemyRig, colorsEnemy);
+        }
+        else
+        {
+            // Write to colorsPlayer (Slice 0) for the PlayerFogQuad
+            if (currentSpectatorIndex == 0) // Main
+            {
+                if (spFowType != MainFowType.EnemiesOnly && playerEntity) RunShadowCaster(playerEntity, colorsPlayer);
+                if (spFowType != MainFowType.PlayerOnly) foreach(var e in enemyEntities) RunShadowCaster(e, colorsPlayer);
+            }
+            else if (currentSpectatorIndex == 1 && playerEntity)
+            {
+                RunShadowCaster(playerEntity, colorsPlayer);
+            }
+            else if (currentSpectatorIndex >= 2)
+            {
+                int enemyIdx = currentSpectatorIndex - 2;
+                if (enemyIdx < enemyEntities.Count) RunShadowCaster(enemyEntities[enemyIdx], colorsPlayer);
+            }
+        }
 
-        // Upload to GPU immediately
-        visibilityTexture.SetPixels32(textureColors);
-        visibilityTexture.Apply(false);
+        // Apply to GPU
+        // Write Player buffer to Slice 0
+        visibilityArray.SetPixels32(colorsPlayer, 0);
+        // Write Enemy buffer to Slice 1
+        visibilityArray.SetPixels32(colorsEnemy, 1);
         
-        // Debug View
-        if (debugImage != null) debugImage.texture = visibilityTexture;
+        // Upload all slices
+        visibilityArray.Apply(false);
+
+        // Camera Tracking
+        UpdateQuadPositions();
     }
-    
+
+    void RunShadowCaster(EntityCameraRig rig, Color32[] buffer)
+    {
+        if (!rig) return;
+        Vector3 bl = grid.transform.position - Vector3.right * grid.gridWorldSize.x / 2 - Vector3.forward * grid.gridWorldSize.y / 2;
+        Vector3 rel = rig.transform.position - bl;
+        
+        int px = Mathf.RoundToInt((rel.x / grid.gridWorldSize.x) * texWidth);
+        int py = Mathf.RoundToInt((rel.z / grid.gridWorldSize.y) * texHeight);
+
+        if (px < 0 || px >= texWidth || py < 0 || py >= texHeight) return;
+
+        ShadowCaster.ComputeVisibility(texWidth, texHeight, new Vector2Int(px, py), rig.fov.viewRadius * resolutionScale,
+            (x, y) => highResWallMap[x + y * texWidth],
+            (x, y) => buffer[x + y * texWidth].a = 255);
+    }
+
     private void ValidateActiveEntities()
     {
-        // Remove dead enemies from the list
-        int removedCount = enemyRigs.RemoveAll(rig => rig == null);
+        int removedCount = enemyEntities.RemoveAll(rig => rig == null);
 
-        // Check if the Player died
-        if (playerRig == null && currentViewMode == ViewMode.Player)
+        if (currentMode == ViewMode.MultiplayerSplitScreen)
         {
-            Debug.Log("Player died. Switching to Main View.");
-            currentViewMode = ViewMode.Main;
-            UpdateActiveCamera();
+            // Handled by GameManager
         }
-
-        // Check if the Enemy being spectated died
-        if (currentViewMode == ViewMode.Enemy)
+        else
         {
-            if (enemyRigs.Count == 0)
+            if (playerEntity == null && currentSpectatorIndex == 1)
             {
-                // No enemies left at all
-                Debug.Log("All enemies died. Switching to Main View.");
-                currentViewMode = ViewMode.Main;
-                UpdateActiveCamera();
+                currentSpectatorIndex = 0; 
+                UpdateSPCamera();
             }
-            else if (currentEnemyIndex >= enemyRigs.Count)
+            if (currentSpectatorIndex >= 2 && currentSpectatorIndex - 2 >= enemyEntities.Count)
             {
-                // The index is now invalid
-                currentEnemyIndex = 0;
-                Debug.Log("Spectated enemy invalid. Switching to first available enemy.");
-                UpdateActiveCamera();
+                currentSpectatorIndex = 0;
+                UpdateSPCamera();
             }
         }
     }
 
-    private void HandleInput()
+    void HandleSPInput()
     {
-        // '1' Cycles View Modes
-        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+        // Singleplayer mode
+        if (GameSettings.CurrentMode == GameMode.SinglePlayer)
         {
-            switch (currentViewMode)
+            // '2' Toggles between Player's Primary and Secondary cameras
+            if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
             {
-                case ViewMode.Main: 
-                    currentViewMode = ViewMode.Player; 
-                    break;
-                case ViewMode.Player: 
-                    currentViewMode = (enemyRigs.Count > 0) ? ViewMode.Enemy : ViewMode.Main; 
-                    break;
-                case ViewMode.Enemy: 
-                    currentViewMode = ViewMode.Main; 
-                    break;
+                spSecondaryCam = !spSecondaryCam;
+                Debug.Log($"Camera Angle: {(spSecondaryCam ? "Secondary" : "Primary")}");
+                UpdateSPCamera();
             }
-            // Reset sub-states
-            isSecondaryCamera = false; 
-            mainFowState = MainFowType.Combined; 
-            Debug.Log($"Mode Switched: {currentViewMode}");
-            UpdateActiveCamera();
+
+            // '1' to spectate player
+            if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+            {
+                if (currentSpectatorIndex != 1) 
+                {
+                    currentSpectatorIndex = 1;
+                    UpdateSPCamera();
+                }
+            }
+
+            // Tab and other cycling keys are ignored in SinglePlayer
+            return;
         }
 
+        // Demo Mode
+        // '1' Cycles View Modes (Main -> Player -> Enemy...)
+        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+        {
+            currentSpectatorIndex++;
+            int max = 2 + enemyEntities.Count;
+            if (currentSpectatorIndex >= max) currentSpectatorIndex = 0;
+            
+            spSecondaryCam = false;
+            Debug.Log($"Spectating Index: {currentSpectatorIndex}");
+            UpdateSPCamera();
+        }
+        
         // '2' Toggles Camera Angle
         if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
         {
-            if (currentViewMode != ViewMode.Main)
+            spSecondaryCam = !spSecondaryCam;
+            UpdateSPCamera();
+        }
+        
+        // 'Tab' Cycles Fog Mode in Main View
+        if (Input.GetKeyDown(KeyCode.Tab) && currentSpectatorIndex == 0)
+        {
+            spFowType = (MainFowType)(((int)spFowType + 1) % 3);
+        }
+    }
+
+    void ConfigureCameraForLayer(Camera cam, int fogIndex, bool viewPlayerFog)
+    {
+        if (cam == null) return;
+        
+        // Set Shader Index
+        var binder = cam.GetComponent<CameraFogBinder>();
+        if (binder != null) binder.fogLayerIndex = fogIndex;
+
+        // Update Culling Mask
+        int pLayer = LayerMask.NameToLayer("PlayerFog");
+        int eLayer = LayerMask.NameToLayer("EnemyFog");
+
+        if (viewPlayerFog)
+        {
+            // See PlayerFog, Hide EnemyFog
+            cam.cullingMask |= (1 << pLayer);
+            cam.cullingMask &= ~(1 << eLayer);
+        }
+        else
+        {
+            // See EnemyFog, Hide PlayerFog
+            cam.cullingMask &= ~(1 << pLayer);
+            cam.cullingMask |= (1 << eLayer);
+        }
+    }
+
+    void UpdateSPCamera()
+    {
+        DisableAllCameras();
+        Camera cam = mainCamera;
+
+        if (currentSpectatorIndex == 1 && playerEntity) 
+            cam = playerEntity.GetCamera(spSecondaryCam);
+        else if (currentSpectatorIndex >= 2) {
+            int idx = currentSpectatorIndex - 2;
+            if (idx < enemyEntities.Count) cam = enemyEntities[idx].GetCamera(spSecondaryCam);
+        }
+
+        if (cam)
+        {
+            cam.gameObject.SetActive(true);
+            ConfigureCameraForLayer(cam, 0, true);
+        }
+        
+        if (playerEntity) {
+            var ctrl = playerEntity.GetComponent<PlayerController>();
+            if(ctrl) ctrl.SetControlMode(currentSpectatorIndex == 1 && spSecondaryCam);
+        }
+    }
+
+    void UpdateQuadPositions()
+    {
+        // Update Player Fog Quad
+        Camera activePCam = GetActiveCameraForLayer("PlayerFog");
+        if (playerFogQuad)
+        {
+            // Tell it which camera to follow.
+            var fitter = playerFogQuad.GetComponent<FitQuadToCamera>();
+            if (fitter != null)
             {
-                isSecondaryCamera = !isSecondaryCamera;
-                Debug.Log($"Camera Angle: {(isSecondaryCamera ? "Secondary" : "Primary")}");
-                UpdateActiveCamera();
+                fitter.targetCamera = activePCam;
             }
         }
 
-        // 'Tab' Cycles Contents inside a mode
-        if (Input.GetKeyDown(KeyCode.Tab))
+        // Update Enemy Fog Quad
+        if (enemyFogQuad)
         {
-            if (currentViewMode == ViewMode.Main)
+            Camera activeEnemyCam = null;
+
+            // Only find a camera if in multiplayer mode and rig exists
+            if (currentMode == ViewMode.MultiplayerSplitScreen && mpEnemyRig != null)
             {
-                // Cycle Fog Modes: Combined -> Player -> Enemies -> Combined
-                mainFowState = (MainFowType)(((int)mainFowState + 1) % 3);
-                Debug.Log($"Main View FOW: {mainFowState}");
+                if (mpEnemyRig.primaryCamera && mpEnemyRig.primaryCamera.gameObject.activeInHierarchy)
+                    activeEnemyCam = mpEnemyRig.primaryCamera;
+                else if (mpEnemyRig.secondaryCamera && mpEnemyRig.secondaryCamera.gameObject.activeInHierarchy)
+                    activeEnemyCam = mpEnemyRig.secondaryCamera;
             }
-            else if (currentViewMode == ViewMode.Enemy)
+
+            var fitter = enemyFogQuad.GetComponent<FitQuadToCamera>();
+            if (fitter != null)
             {
-                // Cycle through Enemies
-                if (enemyRigs.Count > 0)
-                {
-                    currentEnemyIndex = (currentEnemyIndex + 1) % enemyRigs.Count;
-                    Debug.Log($"Spectating Enemy {currentEnemyIndex}");
-                    UpdateActiveCamera();
-                }
+                fitter.targetCamera = activeEnemyCam;
             }
         }
     }
 
-    private void UpdateActiveCamera()
+    Camera GetActiveCameraForLayer(string layerName)
     {
-        // Disable all cameras
+        if (currentMode == ViewMode.SinglePlayerDirector)
+        {
+            if (mainCamera.gameObject.activeInHierarchy) return mainCamera;
+            if (playerEntity && playerEntity.primaryCamera.gameObject.activeInHierarchy) return playerEntity.primaryCamera;
+            if (playerEntity && playerEntity.secondaryCamera.gameObject.activeInHierarchy) return playerEntity.secondaryCamera;
+            foreach(var e in enemyEntities) {
+                if(e.primaryCamera.gameObject.activeInHierarchy) return e.primaryCamera;
+                if(e.secondaryCamera.gameObject.activeInHierarchy) return e.secondaryCamera;
+            }
+        }
+        else
+        {
+            if (playerEntity && playerEntity.primaryCamera.gameObject.activeInHierarchy) return playerEntity.primaryCamera;
+        }
+        return null;
+    }
+
+    public void SetMultiplayerMode(bool enabled)
+    {
+        currentMode = enabled ? ViewMode.MultiplayerSplitScreen : ViewMode.SinglePlayerDirector;
+        
+        if (enemyFogQuad) enemyFogQuad.gameObject.SetActive(enabled);
+        
+        DisableAllCameras();
+        
+        if (enabled)
+        {
+            if (playerEntity) {
+                mpPlayerRig = playerEntity;
+                playerEntity.primaryCamera.rect = new Rect(0, 0, 0.5f, 1);
+                playerEntity.primaryCamera.gameObject.SetActive(true);
+                ConfigureCameraForLayer(playerEntity.primaryCamera, 0, true);
+            }
+        }
+        else
+        {
+            if (playerEntity) playerEntity.primaryCamera.rect = new Rect(0,0,1,1);
+            UpdateSPCamera();
+        }
+    }
+
+    public void SetMPOpponent(EntityCameraRig rig)
+    {
+        if (mpEnemyRig)
+        {
+            if(mpEnemyRig.primaryCamera) mpEnemyRig.primaryCamera.gameObject.SetActive(false);
+            if(mpEnemyRig.secondaryCamera) mpEnemyRig.secondaryCamera.gameObject.SetActive(false);
+        }
+
+        mpEnemyRig = rig;
+
+        if (mpEnemyRig)
+        {
+            Camera c = mpEnemyRig.GetCamera(false); 
+            c.rect = new Rect(0.5f, 0, 0.5f, 1);
+            c.gameObject.SetActive(true);
+            ConfigureCameraForLayer(c, 1, false);
+        }
+    }
+
+    void DisableAllCameras()
+    {
         if (mainCamera) mainCamera.gameObject.SetActive(false);
-        if (playerRig) { if (playerRig.primaryCamera) playerRig.primaryCamera.gameObject.SetActive(false); if (playerRig.secondaryCamera) playerRig.secondaryCamera.gameObject.SetActive(false); }
-        foreach (var rig in enemyRigs) { if (rig.primaryCamera) rig.primaryCamera.gameObject.SetActive(false); if (rig.secondaryCamera) rig.secondaryCamera.gameObject.SetActive(false); }
-
-        // Select new target camera
-        Camera targetCam = null;
-        switch (currentViewMode)
-        {
-            case ViewMode.Main: targetCam = mainCamera; break;
-            case ViewMode.Player: if (playerRig) targetCam = playerRig.GetCamera(isSecondaryCamera); break;
-            case ViewMode.Enemy: if (enemyRigs.Count > 0) targetCam = enemyRigs[currentEnemyIndex].GetCamera(isSecondaryCamera); break;
+        if (playerEntity) { 
+            if(playerEntity.primaryCamera) playerEntity.primaryCamera.gameObject.SetActive(false); 
+            if(playerEntity.secondaryCamera) playerEntity.secondaryCamera.gameObject.SetActive(false);
         }
-        
-        // Check if the camera is still valid
-        if (targetCam == null && currentViewMode != ViewMode.Main)
-        {
-            currentViewMode = ViewMode.Main;
-            targetCam = mainCamera;
-        }
-
-        // Activate and Move Quad
-        if (targetCam != null)
-        {
-            targetCam.gameObject.SetActive(true);
-            if (visibilityQuad != null)
-            {
-                visibilityQuad.SetParent(targetCam.transform);
-                visibilityQuad.localPosition = new Vector3(0, 0, 0.4f);
-                visibilityQuad.localRotation = Quaternion.identity;
-                visibilityQuad.localScale = Vector3.one;
-            }
-        }
-        
-        // Update Player Control Scheme
-        if (playerRig != null)
-        {
-            PlayerController controller = playerRig.GetComponent<PlayerController>();
-            if (controller != null)
-            {
-                // If spectating the Player and using Secondary (Perspective) camera:
-                bool isPerspective = (currentViewMode == ViewMode.Player && isSecondaryCamera);
-                controller.SetControlMode(isPerspective);
-            }
+        foreach (var r in enemyEntities) { 
+            if(r.primaryCamera) r.primaryCamera.gameObject.SetActive(false); 
+            if(r.secondaryCamera) r.secondaryCamera.gameObject.SetActive(false);
         }
     }
 
-    private void ComputeHighResVisibility()
+    void RefreshEntityList()
     {
-        // Calculate grid world bounds once
-        Vector3 worldBottomLeft = grid.transform.position 
-                                - Vector3.right * grid.gridWorldSize.x / 2 
-                                - Vector3.forward * grid.gridWorldSize.y / 2;
-
-        void RunShadowCaster(EntityCameraRig rig)
+        GameObject p = GameObject.FindGameObjectWithTag("Player");
+        if (p) playerEntity = p.GetComponent<EntityCameraRig>();
+        
+        enemyEntities.Clear();
+        foreach (var go in GameObject.FindGameObjectsWithTag("Enemy"))
         {
-            if (rig == null) return;
-            
-            // Calculate relative world position
-            Vector3 relativePos = rig.transform.position - worldBottomLeft;
-
-            // Convert directly to High-Res Grid Coordinates
-            // (Relative X / Total Width) * Total Pixels
-            int pixelX = Mathf.RoundToInt((relativePos.x / grid.gridWorldSize.x) * texWidth);
-            int pixelY = Mathf.RoundToInt((relativePos.z / grid.gridWorldSize.y) * texHeight);
-
-            // Bounds Check
-            if (pixelX < 0 || pixelX >= texWidth || pixelY < 0 || pixelY >= texHeight) return;
-            
-            // Run ShadowCaster
-            ShadowCaster.ComputeVisibility(
-                texWidth, texHeight, 
-                new Vector2Int(pixelX, pixelY), 
-                rig.fov.viewRadius * resolutionScale,
-                (x, y) => highResWallMap[x + y * texWidth], 
-                (x, y) => textureColors[x + y * texWidth].a = 255 
-            );
-        }
-
-        // Determine who to compute for
-        if (currentViewMode == ViewMode.Player)
-        {
-            RunShadowCaster(playerRig);
-        }
-        else if (currentViewMode == ViewMode.Enemy)
-        {
-            if (enemyRigs.Count > 0) RunShadowCaster(enemyRigs[currentEnemyIndex]);
-        }
-        else if (currentViewMode == ViewMode.Main)
-        {
-            if (mainFowState == MainFowType.Combined || mainFowState == MainFowType.PlayerOnly)
-                RunShadowCaster(playerRig);
-            
-            if (mainFowState == MainFowType.Combined || mainFowState == MainFowType.EnemiesOnly)
-                foreach (var r in enemyRigs) RunShadowCaster(r);
+            var r = go.GetComponent<EntityCameraRig>();
+            if (r) enemyEntities.Add(r);
         }
     }
     
     private void ResetEntityRendering()
     {
-        // Set the Render Queue higher than the Fog Quad.
         int entityQueue = 3002;
-
         void SetQueue(EntityCameraRig rig)
         {
             if (rig == null || rig.meshRenderer == null) return;
             rig.meshRenderer.material.renderQueue = entityQueue;
         }
-
-        if (playerRig) SetQueue(playerRig);
-        foreach (var rig in enemyRigs) SetQueue(rig);
+        if (playerEntity) SetQueue(playerEntity);
+        foreach (var rig in enemyEntities) SetQueue(rig);
     }
     
-    // Visualizer API
     public GOAPAgent GetSpectatedEnemyAgent()
     {
-        if (currentViewMode == ViewMode.Enemy && enemyRigs.Count > 0 && currentEnemyIndex < enemyRigs.Count)
-        {
-            if (enemyRigs[currentEnemyIndex] != null)
-                return enemyRigs[currentEnemyIndex].GetComponent<GOAPAgent>();
+        if (currentMode == ViewMode.MultiplayerSplitScreen) return mpEnemyRig ? mpEnemyRig.GetComponent<GOAPAgent>() : null;
+        
+        if (currentSpectatorIndex >= 2) {
+            int idx = currentSpectatorIndex - 2;
+            if (idx < enemyEntities.Count) return enemyEntities[idx].GetComponent<GOAPAgent>();
         }
         return null;
     }
     
     private void UpdatePathVisualization()
     {
-        // Clear previous frame's path
+        // Always reset path first
         grid.debugPath = null;
 
+        // Do not show debug paths in Multiplayer
+        if (currentMode == ViewMode.MultiplayerSplitScreen) return;
+
         // Check if spectating an enemy
-        if (currentViewMode == ViewMode.Enemy && enemyRigs.Count > 0 && currentEnemyIndex < enemyRigs.Count)
+        GOAPAgent activeAgent = GetSpectatedEnemyAgent();
+
+        if (activeAgent != null && activeAgent.currentActions.Count > 0)
         {
-            EntityCameraRig rig = enemyRigs[currentEnemyIndex];
-            if (rig == null) return;
-
-            GOAPAgent agent = rig.GetComponent<GOAPAgent>();
-            if (agent != null && agent.currentActions.Count > 0)
+            GOAPAction currentAction = activeAgent.currentActions.Peek();
+            if (currentAction != null)
             {
-                // Get the currently running action
-                GOAPAction currentAction = agent.currentActions.Peek();
-                
-                // Get the path from the action
-                if (currentAction != null)
-                {
-                    grid.debugPath = currentAction.GetPath();
+                grid.debugPath = currentAction.GetPath();
 
-                    // Determine Color based on Action Type
-                    if (currentAction is MoveToAction)
-                        grid.debugPathColor = Color.green; // Player Chase
-                    else if (currentAction is RechargeAction)
-                        grid.debugPathColor = new Color(0.6f, 0f, 1f); // Purple (Recharge)
-                    else if (currentAction is RoamAction)
-                        grid.debugPathColor = new Color(0.6f, 0.4f, 0.2f); // Brown (Roam)
-                    else
-                        grid.debugPathColor = Color.white; // Default
-                }
+                if (currentAction is MoveToAction) grid.debugPathColor = Color.green;
+                else if (currentAction is RechargeAction) grid.debugPathColor = new Color(0.6f, 0f, 1f);
+                else if (currentAction is RoamAction) grid.debugPathColor = new Color(0.6f, 0.4f, 0.2f);
+                else grid.debugPathColor = Color.white;
             }
         }
     }

@@ -11,6 +11,7 @@ public class RechargeAction : GOAPAction
     // Cache the successful path and target found during the check
     private List<Node> cachedPath;
     private Vector3 targetPosition;
+    private GameObject targetStation; 
     
     private int pathIndex = 0;
     private float moveSpeed = 5f;
@@ -38,6 +39,7 @@ public class RechargeAction : GOAPAction
         target = null;
         targetPosition = Vector3.zero;
         cachedPath = null;
+        targetStation = null;
         isDone = false;
     }
 
@@ -52,14 +54,36 @@ public class RechargeAction : GOAPAction
     {
         if (goapAgent.energyStations == null || goapAgent.energyStations.Length == 0)
             return false;
+        
+        // Null Filtering
+        List<GameObject> validStations = new List<GameObject>();
+        
+        foreach (var s in goapAgent.energyStations)
+        {
+            if (s != null) 
+            {
+                validStations.Add(s);
+            }
+        }
+        
+        if (validStations.Count == 0) 
+            return false; // No stations left in the world
 
         // Sort stations by distance to find the best candidate first
-        var sortedStations = goapAgent.energyStations
-            .OrderBy(station => Vector3.Distance(station.transform.position, agent.transform.position));
+        Vector3 agentPos = agent.transform.position;
+        validStations.Sort((a, b) => {
+            if (a == null) return 1;
+            if (b == null) return -1;
+            float distA = (a.transform.position - agentPos).sqrMagnitude;
+            float distB = (b.transform.position - agentPos).sqrMagnitude;
+            return distA.CompareTo(distB);
+        });
 
         // Iterate through stations until a reachable one is found
-        foreach (var station in sortedStations)
+        foreach (var station in validStations)
         {
+            if (station == null) continue;
+            
             Node stationNode = grid.NodeFromWorldPoint(station.transform.position);
             Vector3 potentialTarget = Vector3.zero;
             bool foundValidNode = false;
@@ -92,6 +116,7 @@ public class RechargeAction : GOAPAction
                     // Success, cache the data so Perform doesn't need to recalculate.
                     cachedPath = testPath;
                     targetPosition = potentialTarget;
+                    targetStation = station; 
                     return true; 
                 }
                 // If path is null, this station is walled off. Loop to the next station.
@@ -113,6 +138,13 @@ public class RechargeAction : GOAPAction
 
     public override bool Perform(GameObject agent)
     {
+        // If the player destroyed it, targetStation becomes null
+        if (targetStation == null)
+        {
+            // Find a new station
+            return false; 
+        }
+        
         if (target == null)
         {
             target = new GameObject("DynamicRechargeTarget");

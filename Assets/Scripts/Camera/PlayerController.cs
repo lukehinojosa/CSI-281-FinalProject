@@ -32,8 +32,12 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         // 1. Inputs
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
+        float h = 0;
+        float v = 0;
+        if (Input.GetKey(KeyCode.W)) v += 1;
+        if (Input.GetKey(KeyCode.S)) v -= 1;
+        if (Input.GetKey(KeyCode.D)) h += 1;
+        if (Input.GetKey(KeyCode.A)) h -= 1;
         
         // 2. Gravity Logic
         if (controller.isGrounded && verticalVelocity < 0)

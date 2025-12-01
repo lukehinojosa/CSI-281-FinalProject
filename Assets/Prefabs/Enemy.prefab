@@ -17,6 +17,8 @@ GameObject:
   - component: {fileID: 9143514852820439389}
   - component: {fileID: 7246630466748726140}
   - component: {fileID: 4142989795547459855}
+  - component: {fileID: -409254902600190907}
+  - component: {fileID: 4392633203206394462}
   m_Layer: 8
   m_Name: Enemy
   m_TagString: Enemy
@@ -114,6 +116,7 @@ MonoBehaviour:
   turnSmoothTime: 0.1
   debugStateName: None
   repathRate: 0.1
+  isManualControl: 0
 --- !u!114 &8277159289893894369
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -189,6 +192,49 @@ MonoBehaviour:
   meshRenderer: {fileID: 5302374954442790561}
   primaryCamera: {fileID: 5770011636562280056}
   secondaryCamera: {fileID: 236559764270249795}
+--- !u!143 &-409254902600190907
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2795966798212226245}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &4392633203206394462
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2795966798212226245}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70672f1740558fd2d87b61f7ef3d4aef, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  attackRange: 1.5
+  attackRate: 2
+  isPossessed: 0
+  moveSpeed: 6
+  turnSmoothTime: 0.1
 --- !u!1 &4277389304079033958
 GameObject:
   m_ObjectHideFlags: 0
@@ -199,9 +245,9 @@ GameObject:
   m_Component:
   - component: {fileID: 2143152922324278123}
   - component: {fileID: 236559764270249795}
-  - component: {fileID: 4627465128287630763}
   - component: {fileID: 1076895835126454780}
   - component: {fileID: 8110763913575965017}
+  - component: {fileID: 1585364642781333643}
   m_Layer: 0
   m_Name: ThirdPerson
   m_TagString: Untagged
@@ -263,7 +309,7 @@ Camera:
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 1527
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0
@@ -275,14 +321,6 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!81 &4627465128287630763
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4277389304079033958}
-  m_Enabled: 1
 --- !u!114 &1076895835126454780
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -320,6 +358,19 @@ MonoBehaviour:
     m_Bits: 64
   wallBuffer: 0.2
   zoomSpeed: 10
+--- !u!114 &1585364642781333643
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4277389304079033958}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ead63a0af15c70399834711acc97395c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  fogLayerIndex: 1
 --- !u!1 &5940454432322823612
 GameObject:
   m_ObjectHideFlags: 0
@@ -330,9 +381,9 @@ GameObject:
   m_Component:
   - component: {fileID: 6743146878737223208}
   - component: {fileID: 5770011636562280056}
-  - component: {fileID: 4972809450324372127}
   - component: {fileID: 6883902106076161033}
   - component: {fileID: 7481922949613412863}
+  - component: {fileID: 4150619597319917869}
   m_Layer: 0
   m_Name: BirdsEye
   m_TagString: Untagged
@@ -394,7 +445,7 @@ Camera:
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 1527
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0
@@ -406,14 +457,6 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!81 &4972809450324372127
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5940454432322823612}
-  m_Enabled: 1
 --- !u!114 &6883902106076161033
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -451,3 +494,16 @@ MonoBehaviour:
     m_Bits: 64
   wallBuffer: 0.2
   zoomSpeed: 15
+--- !u!114 &4150619597319917869
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5940454432322823612}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ead63a0af15c70399834711acc97395c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  fogLayerIndex: 1
