@@ -1,10 +1,11 @@
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
 
-public class GameManager : MonoBehaviour
+public class GameManager : NetworkBehaviour
 {
     [Header("Single Player UI")]
     public GameObject globalWinScreen;
@@ -26,6 +27,22 @@ public class GameManager : MonoBehaviour
     private List<EnemyUnit> enemies = new List<EnemyUnit>();
     private EnemyUnit currentPossessedUnit;
     private bool gameEnded = false;
+    
+    public GameObject enemyPrefab;
+    
+    public override void OnNetworkSpawn()
+    {
+        if (IsServer)
+        {
+            // Spawn Enemies on the Network
+
+            foreach(var spawnPoint in GameObject.FindGameObjectsWithTag("EnemySpawn")) 
+            {
+                GameObject e = Instantiate(enemyPrefab, spawnPoint.transform.position, Quaternion.identity);
+                e.GetComponent<NetworkObject>().Spawn();
+            }
+        }
+    }
 
     void Start()
     {
@@ -41,6 +58,8 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
+        if (!IsServer) return; // Only Server manages game state
+        
         if (Input.GetKeyDown(KeyCode.Backspace))
         {
             SceneManager.LoadScene("MainMenu");
@@ -76,6 +95,19 @@ public class GameManager : MonoBehaviour
             
             HandlePossessionInput();
         }
+        
+        // If win/lose, send ClientRpc to show UI on clients
+        if (gameEnded) return;
+        
+        // Check conditions...
+        if (playerDead) GameOverClientRpc(false); 
+    }
+    
+    [ClientRpc]
+    void GameOverClientRpc(bool playerWon)
+    {
+        // Show Local UI
+        GameOver(playerWon);
     }
 
     void SetupGameMode()

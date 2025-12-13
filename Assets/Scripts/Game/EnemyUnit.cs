@@ -1,8 +1,9 @@
 using UnityEngine;
+using Unity.Netcode;
 
 [RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(GOAPAgent))]
-public class EnemyUnit : MonoBehaviour
+public class EnemyUnit : NetworkBehaviour
 {
     [Header("Combat")]
     public float attackRange = 1.5f;
@@ -20,6 +21,9 @@ public class EnemyUnit : MonoBehaviour
     
     public float turnSmoothTime = 0.1f;
     private float turnSmoothVelocity;
+    
+    // Sync possession state across network
+    public NetworkVariable<bool> netIsPossessed = new NetworkVariable<bool>(false);
 
     void Start()
     {
@@ -36,14 +40,45 @@ public class EnemyUnit : MonoBehaviour
 
     void Update()
     {
+        // Host runs logic to update NetworkVariable
+        if (IsServer)
+        {
+            netIsPossessed.Value = isPossessed;
+        }
+        
         // Possession Logic (Multiplayer Only)
         if (isPossessed)
         {
-            HandleManualControl();
+            // Only allow movement if I own this object (Client Authority)
+            if (IsOwner) 
+            {
+                HandleManualControl();
+            }
         }
         
-        // Automatic attack if close enough.
-        TryAttack();
+        // Attack Logic (Server Only handles damage)
+        if (IsServer)
+        {
+            // Automatic attack if close enough.
+            TryAttack();
+        }
+    }
+    
+    // Server Authoritative Possession Swap
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestPossessionServerRpc(ulong newOwnerId)
+    {
+        // Transfer ownership to the client who asked
+        GetComponent<NetworkObject>().ChangeOwnership(newOwnerId);
+        isPossessed = true;
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void ReleasePossessionServerRpc()
+    {
+        // Give ownership back to Server
+        GetComponent<NetworkObject>().RemoveOwnership();
+        isPossessed = false;
     }
 
     void HandleManualControl()

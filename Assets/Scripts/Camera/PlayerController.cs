@@ -1,7 +1,8 @@
 using UnityEngine;
+using Unity.Netcode;
 
 [RequireComponent(typeof(CharacterController))]
-public class PlayerController : MonoBehaviour
+public class PlayerController : NetworkBehaviour
 {
     [Header("Movement Settings")]
     public float moveSpeed = 8f;
@@ -28,9 +29,30 @@ public class PlayerController : MonoBehaviour
         Cursor.lockState = isPerspective ? CursorLockMode.Locked : CursorLockMode.None;
         Cursor.visible = !isPerspective;
     }
+    
+    public override void OnNetworkSpawn()
+    {
+        // Only enable the camera if this is MY player
+        // Assume the camera is a child of the player
+        var cameras = GetComponentsInChildren<Camera>(true);
+        foreach (var cam in cameras)
+        {
+            cam.gameObject.SetActive(IsOwner);
+        }
+        
+        // If not owner, disable audio listener
+        if (!IsOwner)
+        {
+            var listener = GetComponentInChildren<AudioListener>();
+            if (listener) listener.enabled = false;
+        }
+    }
 
     void Update()
     {
+        // Stop if not owner
+        if (!IsOwner) return;
+        
         // Inputs
         float h = 0;
         float v = 0;
